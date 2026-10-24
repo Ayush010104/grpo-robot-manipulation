@@ -36,6 +36,19 @@ state-embedding space computed across a GRPO group's sibling rollouts within a t
 window** (Idea A's exact mechanism as specified in the roadmap). The Khanda et al. paper
 is the one risk to that specific novelty claim and needs to be read directly.
 
+## GitHub reading-list cross-check (`Denghaoyuan123/Awesome-RL-VLA`)
+
+Fetched the repo's README directly (`gh api` confirmed the repo exists; title: "A Survey
+on Reinforcement Learning of Vision-Language-Action Models for Robotic Manipulation").
+**No entry describes state-matched baselines, k-NN advantage estimation, or
+per-step/state-conditioned GRPO baselines.** Closest categories: GRPO-based online
+methods (TGRPO, SimpleVLA-RL, RLVLA, WMPO, and others listed only as "uses GRPO", no
+baseline-design detail visible from the README table alone) and advantage-weighted
+offline methods (ARFM, RECAP, AW-BC, AWR, IG-AWR — these are offline/weighted-regression
+methods, not GRPO-group k-NN baselines). This is a second independent signal (after the
+web search) that Idea A's specific mechanism isn't an already-cataloged technique in this
+survey -- still doesn't replace actually reading arXiv:2507.19555.
+
 ## Recommendation
 
 Proceed with the Month 1-2 plan (BC + PPO/GRPO/RLOO/TGRPO baselines) regardless — that
