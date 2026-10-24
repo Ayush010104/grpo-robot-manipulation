@@ -28,11 +28,16 @@ training:
 policy:
   hidden_sizes: [256, 256]
   log_std_init: -0.5
+  # Warm-start the *trainable* policy from a BC checkpoint (roadmap Section 7, Month 2:
+  # "Implement baselines on top of the behaviour-cloning policy"). Leave null to train
+  # from random init (e.g. the Hopper-v5 smoke tests, which have no BC policy).
+  init_checkpoint: null
 
 reference_policy:
   # Path to a frozen behaviour-cloning checkpoint for the KL-to-reference diagnostic
   # (roadmap Section 9: "Keep a KL penalty or clipping to the reference (BC) policy").
-  # Leave null to skip loading one (e.g. the very first sanity-check runs).
+  # Leave null to skip loading one (e.g. the very first sanity-check runs). Usually the
+  # same file as policy.init_checkpoint.
   checkpoint: null
 
 # --- per-algo knobs, read by the matching algos/*.py update() ---

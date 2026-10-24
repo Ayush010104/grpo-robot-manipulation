@@ -56,6 +56,9 @@ def main(cfg: DictConfig) -> None:
     policy = GaussianMLPPolicy(
         obs_dim, act_dim, hidden_sizes=cfg.policy.hidden_sizes, log_std_init=cfg.policy.log_std_init
     ).to(device)
+    if cfg.policy.init_checkpoint:
+        policy.load_state_dict(torch.load(cfg.policy.init_checkpoint, map_location=device))
+        print(f"[train] warm-started policy from {cfg.policy.init_checkpoint}")
     policy_optimizer = torch.optim.Adam(policy.parameters(), lr=cfg.training.lr)
 
     value_fn = value_optimizer = None
