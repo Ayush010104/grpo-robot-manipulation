@@ -1,0 +1,61 @@
+# Default training config (Hydra). Override on the command line, e.g.:
+#   python train.py algo=sm_grpo env.env_id=Hopper-v5 sm_grpo.k=8
+defaults:
+  - _self_
+
+seed: 0
+device: mps  # "mps" | "cpu" | "cuda" -- falls back to cpu automatically if unavailable
+
+env:
+  env_id: Hopper-v5
+  backend: gymnasium  # "gymnasium" | "metaworld" | "libero"
+  max_episode_steps: 200
+
+algo: grpo  # "ppo" | "grpo" | "rloo" | "tgrpo" | "sm_grpo"
+
+training:
+  num_iterations: 200
+  num_groups_per_iteration: 4
+  group_size: 8          # G, roadmap Section 9: "G = 8 to 16 rollouts"
+  max_steps_per_episode: 200
+  gamma: 0.99
+  lr: 3.0e-4
+  grad_clip: 1.0
+  eval_every: 10
+  checkpoint_every: 50
+  log_dir: outputs
+
+policy:
+  hidden_sizes: [256, 256]
+  log_std_init: -0.5
+
+reference_policy:
+  # Path to a frozen behaviour-cloning checkpoint for the KL-to-reference diagnostic
+  # (roadmap Section 9: "Keep a KL penalty or clipping to the reference (BC) policy").
+  # Leave null to skip loading one (e.g. the very first sanity-check runs).
+  checkpoint: null
+
+# --- per-algo knobs, read by the matching algos/*.py update() ---
+grpo:
+  robust_normalize: false  # Idea B toggle
+  sigma_min: 0.01
+
+rloo: {}
+
+tgrpo:
+  alpha: 0.5
+
+sm_grpo:
+  k: 4
+  time_window: 5
+  robust_normalize: false
+  sigma_min: 0.01
+
+ppo:
+  lam: 0.95
+  clip_ratio: 0.2
+  epochs: 4
+  minibatch_size: 256
+  value_coef: 0.5
+  entropy_coef: 0.0
+  value_lr: 1.0e-3

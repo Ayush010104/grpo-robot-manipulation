@@ -1,0 +1,13 @@
+torch
+gymnasium[mujoco]
+metaworld
+minari
+wandb
+hydra-core
+omegaconf
+numpy
+scipy
+matplotlib
+tensorboard
+rliable
+tqdm
