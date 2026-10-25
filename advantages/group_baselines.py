@@ -54,10 +54,27 @@ def robust_trajectory_advantages(
 
 
 def is_degenerate_group(returns: np.ndarray, success_threshold: float = 0.0) -> bool:
-    """True if every rollout in the group succeeded or every rollout failed (Section 4.2
-    #3). Such groups give ~zero advantage and ~zero gradient under vanilla GRPO.
+    """True if every rollout in the group scored above `success_threshold` or every
+    rollout scored at/below it (Section 4.2 #3). Such groups give ~zero advantage and
+    ~zero gradient under vanilla GRPO.
+
+    Only meaningful for sparse/binary rewards where `returns` really are 0/1 (or a
+    threshold cleanly separates success from failure). For a dense-shaped reward (e.g.
+    Meta-World's default per-step shaping), trajectory returns are continuous and almost
+    always > 0 regardless of task success, so this degenerates to "always True" and
+    stops being informative -- use `is_degenerate_group_by_success` instead in that case.
     """
     successes = returns > success_threshold
+    return bool(successes.all() or (~successes).all())
+
+
+def is_degenerate_group_by_success(successes: np.ndarray) -> bool:
+    """Same check as `is_degenerate_group`, but on the env's actual binary
+    info["success"] flag per rollout rather than a threshold on a (possibly dense,
+    continuous) return. This is the correct diagnostic for Meta-World-style envs with
+    dense shaping rewards (see `is_degenerate_group`'s docstring).
+    """
+    successes = np.asarray(successes, dtype=bool)
     return bool(successes.all() or (~successes).all())
 
 

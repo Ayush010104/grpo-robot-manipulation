@@ -1,5 +1,55 @@
 # Progress log
 
+## 2026-10-25 — Month 2: reproduced the GRPO collapse
+
+Ran `scripts/run_month2_comparison.sh`: PPO, GRPO, RLOO, TGRPO, all warm-started from the
+`bc_pick-place-v3.pt` checkpoint, 60 iterations each (group_size=8, 3 groups/iter, 150
+max steps/episode → 1.44M env steps per algo). Results (`analysis/plot_comparison.py`,
+plots saved to `analysis/month2_success_rate.png` and `analysis/month2_mean_return.png`):
+
+| algo | success_rate: last | success_rate: best | mean_return: last | mean_return: best |
+|---|---|---|---|---|
+| **ppo** | **28.8%** | **30.6%** | **234.5** | **243.9** |
+| grpo | 0.0% | 5.6% | 0.88 | 38.1 |
+| rloo | 0.0% | 5.6% | 0.88 | 38.1 |
+| tgrpo | 0.0% | 5.6% | 0.86 | 38.1 |
+
+**This is a clean reproduction of the roadmap's central hypothesis (Section 4.2 / the
+RL4VLA finding "PPO beats GRPO").** All three critic-free, group-relative methods start
+at the BC policy's success rate (~5-7%, matching the noisy training-rollout estimate of
+the Month-1 BC checkpoint) and collapse to ~0% success / near-zero return within ~6-9
+iterations (~150-240k env steps) and never recover over the full 1.44M-step run. PPO
+instead improves steadily to ~29-31% success. See the success-rate plot — GRPO/RLOO/TGRPO
+are visually indistinguishable (all three collapse the same way), while PPO's curve
+climbs the whole time.
+
+**Bug found and fixed during this analysis:** `is_degenerate_group` (used for the
+`degenerate_group_frac` diagnostic) was being called on continuous trajectory *returns*
+with a `> 0` threshold. Meta-World's reward is dense-shaped, so returns are almost always
+positive regardless of real task success — every group logged `degenerate_group_frac =
+1.00` for all four algos, which is an artifact of the threshold, not evidence every group
+was truly all-success-or-all-fail. Added `is_degenerate_group_by_success` (operates on
+the real `info["success"]` flag) and switched all four `algos/*.py` to use it, plus a
+regression test (`test_is_degenerate_group_by_success_ignores_dense_return_magnitude`).
+**This bug did not affect the collapse result above** — the advantage computations that
+actually drive the policy update were always on the real returns, untouched by this
+diagnostic; only the degenerate-group logging was wrong. Re-running Month 2 with the
+fixed diagnostic (to see the *real* degenerate-group fraction over training, which is
+likely still relevant via `info["success"]` directly) is a good next step but wasn't
+re-run tonight to avoid spending another ~2 hours of wall-clock on a result whose
+headline finding (collapse vs. no collapse) is already unambiguous.
+
+**Open question for Month 3 / next session:** since GRPO/RLOO/TGRPO all collapse near-
+identically and near-immediately, it's worth checking *why* before assuming it's the
+"noisy group comparison" story from Section 4.2 #1 — e.g. log the actual gradient
+direction / action-mean drift over the first ~10 iterations, since a collapse this fast
+and this uniform across three different advantage estimators is also consistent with a
+too-high learning rate (`training.lr = 3e-4` was reused unchanged from the Hopper-v5
+smoke-test default, not tuned for a BC-warm-started policy) rather than purely the
+advantage-estimator instability the roadmap describes. Worth a quick learning-rate sweep
+on GRPO before concluding the collapse is really about advantage *estimator* quality
+(which is what Month 3's SM-GRPO is supposed to fix) rather than just step size.
+
 ## 2026-10-24 — initial scaffold + Month-1 start (autonomous session)
 
 Executed roadmap Section 11 "Immediate Next Steps" 1-3, and most of Section 9's code

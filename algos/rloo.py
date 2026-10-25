@@ -9,7 +9,7 @@ import torch
 
 from algos.common import clip_grad_and_step, flatten_group_steps, group_diagnostics, kl_to_reference
 from algos.rollout_buffer import RolloutGroup
-from advantages.group_baselines import is_degenerate_group, leave_one_out_advantages
+from advantages.group_baselines import is_degenerate_group_by_success, leave_one_out_advantages
 
 
 def update(
@@ -24,7 +24,8 @@ def update(
     degenerate_mask = []
     for group in groups:
         returns = group.returns
-        degenerate_mask.append(is_degenerate_group(returns))
+        successes = np.array([t.succeeded for t in group.trajectories])
+        degenerate_mask.append(is_degenerate_group_by_success(successes))
         adv = leave_one_out_advantages(returns)
         per_traj_adv.append(
             [np.full(len(t.rewards), a, dtype=np.float32) for t, a in zip(group.trajectories, adv)]

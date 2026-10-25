@@ -8,6 +8,7 @@ from advantages.group_baselines import (
     compute_returns_to_go,
     fuse_trajectory_and_step,
     is_degenerate_group,
+    is_degenerate_group_by_success,
     leave_one_out_advantages,
     robust_scale,
     robust_trajectory_advantages,
@@ -48,6 +49,20 @@ def test_is_degenerate_group_all_success_and_all_fail():
     assert is_degenerate_group(np.array([1.0, 1.0, 1.0]))
     assert is_degenerate_group(np.array([0.0, 0.0, 0.0]))
     assert not is_degenerate_group(np.array([0.0, 1.0, 0.0]))
+
+
+def test_is_degenerate_group_by_success_ignores_dense_return_magnitude():
+    # Regression test: a dense-shaped reward (e.g. Meta-World) gives continuous,
+    # almost-always-positive trajectory returns regardless of true task success, so a
+    # threshold-on-return check (is_degenerate_group) is misleading there -- the
+    # success-flag-based check must look at the real binary outcome instead.
+    dense_returns = np.array([38.0, 23.0, 0.5, 12.0])  # all > 0, but...
+    true_successes = np.array([True, False, False, False])  # ...mixed real outcomes
+    assert is_degenerate_group(dense_returns)  # the bug: looks degenerate by return > 0
+    assert not is_degenerate_group_by_success(true_successes)  # the fix: it isn't
+
+    assert is_degenerate_group_by_success(np.array([True, True, True]))
+    assert is_degenerate_group_by_success(np.array([False, False, False]))
 
 
 def test_leave_one_out_excludes_self():

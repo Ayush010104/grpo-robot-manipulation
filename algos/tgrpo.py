@@ -11,7 +11,7 @@ from algos.common import clip_grad_and_step, group_diagnostics, kl_to_reference
 from algos.rollout_buffer import RolloutGroup
 from advantages.group_baselines import (
     fuse_trajectory_and_step,
-    is_degenerate_group,
+    is_degenerate_group_by_success,
     trajectory_advantages,
 )
 
@@ -50,7 +50,8 @@ def update(
 
     for group in groups:
         returns = group.returns
-        degenerate_mask.append(is_degenerate_group(returns))
+        successes = np.array([t.succeeded for t in group.trajectories])
+        degenerate_mask.append(is_degenerate_group_by_success(successes))
         traj_adv = trajectory_advantages(returns)
 
         group_rtg = [t.returns_to_go(gamma=gamma) for t in group.trajectories]

@@ -14,7 +14,7 @@ from algos.common import (
 )
 from algos.rollout_buffer import RolloutGroup
 from advantages.group_baselines import (
-    is_degenerate_group,
+    is_degenerate_group_by_success,
     robust_trajectory_advantages,
     trajectory_advantages,
 )
@@ -34,7 +34,8 @@ def update(
     degenerate_mask = []
     for group in groups:
         returns = group.returns
-        degenerate_mask.append(is_degenerate_group(returns))
+        successes = np.array([t.succeeded for t in group.trajectories])
+        degenerate_mask.append(is_degenerate_group_by_success(successes))
         if robust_normalize:
             adv = robust_trajectory_advantages(returns, sigma_min=sigma_min)
         else:
