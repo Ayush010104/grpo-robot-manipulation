@@ -1,6 +1,34 @@
 # Progress log
 
-## 2026-10-25 — LR sweep: the "collapse" is partly a step-size artifact
+## 2026-10-25 — CORRECTION: the LR-sweep conclusion below was confounded by batch size
+
+**The "GRPO collapse is partly a step-size artifact" conclusion in the section below is
+unreliable as stated — treat it as superseded until the matched-batch re-run (this
+section) is read.** While generating a fresh comparison plot, the per-iteration env-step
+counts didn't match between the Month-2 run and the LR-sweep follow-ups (24000 vs 3600 at
+iteration 0 -- a clean 20/3 ratio). Checked each process's own printed Hydra config (the
+authoritative source — not the on-disk `.hydra/overrides.yaml`, which collided and got
+overwritten since all 4 Month-2 processes launched in the same wall-clock second) and
+confirmed: **the real Month-2 run used `num_groups_per_iteration=20`**, not the `3` that
+`scripts/run_month2_comparison.sh`'s `GROUPS=${GROUPS:-3}` default was supposed to
+produce, while `run_lr_sweep.sh` / `run_month2_lowlr.sh` *did* get the intended `3`.
+Root cause not fully pinned down — checked `~/.zshrc` and `~/.zprofile` for a leaked
+`GROUPS` env var, found nothing, so it's unexplained, not just "obviously a profile
+collision." Either way: **the LR-sweep's "no collapse but no clear trend either" result
+was measured at a 6.67x smaller batch size than the Month-2 run it was supposed to be
+compared against**, so it doesn't actually isolate the learning-rate variable -- smaller
+batch size alone would also be expected to make training noisier and slower to show a
+trend, independent of LR.
+
+**Fix applied:** `scripts/run_lr_matched_batch.sh` hardcodes every value directly (no
+shell-variable indirection) and launched GRPO at `lr=3e-5` with
+`num_groups_per_iteration=20` (matching the real Month-2 batch size exactly) for the
+full 60 iterations, to properly isolate the LR effect against the existing
+`logs/month2_grpo.log` (`lr=3e-4`, `groups=20`) run. **Results pending** — check this
+file for an update, or `logs/grpo_lr3e-5_matched.log` directly, before relying on
+anything in the "LR sweep" section below.
+
+## 2026-10-25 — LR sweep: the "collapse" is partly a step-size artifact (SUPERSEDED, see correction above)
 
 Follow-up to the open question below. Ran GRPO at `lr=3e-5` and `lr=3e-6` (vs. the
 original `lr=3e-4`), 25 iterations each, same everything else (`scripts/run_lr_sweep.sh`,
