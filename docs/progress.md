@@ -1,5 +1,19 @@
 # Progress log
 
+## 2026-10-25 — Month 3 kicked off: first real SM-GRPO run
+
+Launched `scripts/run_month3_sm_grpo.sh`: SM-GRPO (Idea A, `k=4`, `time_window=5`) at
+the exact Month-2-matched settings (pick-place-v3, BC warm-start, `groups=20`,
+`group_size=8`, `lr=3e-4`, 60 iterations) for a direct comparison against the existing
+PPO (~27-31%) and GRPO (collapses to 0%) runs at the same LR. Timed one iteration first
+(~93s, same cost as GRPO/PPO at this scale -- the k-NN overhead is negligible here) before
+committing to the full ~93-minute run. Results pending.
+
+**Caveat going in:** this is a first run at default k/time_window, not yet the Month-3
+ablation sweep the roadmap asks for (k, time_window, with/without robust normalisation,
+with/without common random numbers) -- treat this as "does it work at all" before
+"how well does it work relative to its own hyperparameters."
+
 ## 2026-10-25 — Month 2 final verdict (properly controlled): GRPO degrades at both LRs
 
 `scripts/run_lr_matched_batch.sh` finished: GRPO at `lr=3e-5`, `groups=20` (matching the
