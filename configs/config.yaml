@@ -53,7 +53,13 @@ tgrpo:
 sm_grpo:
   k: 4
   time_window: 5
-  robust_normalize: false
+  # Default true (unlike grpo.robust_normalize, which is an ablation toggle for an
+  # already-normalized advantage): state_matched_baselines returns a RAW, unnormalized
+  # return-to-go difference, with no scale control at all when this is off. A first
+  # Month-3 run at robust_normalize=false measured advantage_abs_mean=12.6 at iter 0 vs.
+  # GRPO's properly-scaled ~0.74 at the same LR -- a ~17x larger effective step size --
+  # and collapsed faster than vanilla GRPO as a direct result. See docs/progress.md.
+  robust_normalize: true
   sigma_min: 0.01
 
 ppo:

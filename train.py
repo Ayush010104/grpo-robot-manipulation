@@ -138,6 +138,7 @@ def main(cfg: DictConfig) -> None:
             f"success_rate={diag.get('success_rate', float('nan')):.3f} "
             f"mean_return={diag.get('mean_return', float('nan')):.2f} "
             f"degenerate_frac={diag.get('degenerate_group_frac', float('nan')):.2f} "
+            f"adv_abs_mean={diag.get('advantage_abs_mean', float('nan')):.3f} "
             f"grad_norm={diag.get('grad_norm', float('nan')):.3f} "
             f"({dt:.1f}s)"
         )

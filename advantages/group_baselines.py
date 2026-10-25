@@ -103,6 +103,15 @@ def state_matched_baselines(
     low-dimensional state-embedding space, within a time window (roadmap Section 5, Idea
     A). Reduces variance from stochastic dynamics vs. a single whole-trajectory baseline.
 
+    IMPORTANT: unlike every other advantage function in this module, the returned value
+    is a RAW, unnormalized `return_to_go - baseline` difference -- there is no division
+    by a scale estimate here. A first Month-3 run (see docs/progress.md, 2026-10-25)
+    measured advantage_abs_mean=12.6 at iteration 0 with this un-normalized, vs. GRPO's
+    properly std-normalized ~0.74 at the same learning rate -- a ~17x larger effective
+    step size -- and it collapsed faster than vanilla GRPO as a direct result. Callers
+    (see algos/sm_grpo.py) MUST apply some scale control (e.g. `robust_scale` on the
+    group's trajectory returns) before using this as a policy-gradient advantage.
+
     Args:
         group_states: length-G list of (T_g, D) state embeddings, one array per rollout
             (T_g may differ per rollout).

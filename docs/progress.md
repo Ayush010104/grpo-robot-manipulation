@@ -1,6 +1,41 @@
 # Progress log
 
-## 2026-10-25 — Month 3 kicked off: first real SM-GRPO run
+## 2026-10-25 — Month 3 v1 negative result diagnosed and fixed: missing normalization
+
+SM-GRPO's first run (below) collapsed *faster* than vanilla GRPO (0% success by
+iteration 3 vs. GRPO's iteration 6), which on its face looked bad for Idea A. Checked
+`advantage_abs_mean` (logged to TensorBoard, not stdout) for both runs:
+
+| run | iter 0 advantage_abs_mean | iter 5 |
+|---|---|---|
+| grpo, lr=3e-4 | 0.742 | 0.733 |
+| **sm_grpo v1, lr=3e-4** | **12.591** | **0.350** (already collapsing) |
+
+**Root cause: `state_matched_baselines` (`advantages/group_baselines.py`) is the only
+advantage function in the codebase that returns a raw, unnormalized
+`return_to_go - baseline` difference** — `trajectory_advantages`,
+`robust_trajectory_advantages`, and `leave_one_out_advantages` all divide by a std or
+robust-scale estimate; this one didn't. At `lr=3e-4`, that's a ~17x larger effective
+step size than GRPO's properly-scaled advantage, at the *same* nominal learning rate —
+enough on its own to explain the faster collapse, independent of whether state-matching
+itself is a good idea.
+
+**Fix:** `algos/sm_grpo.py` already had an unused `robust_normalize` option (divides by
+`robust_scale(group.returns)`, the same scale GRPO's Idea-B toggle uses) — just never
+turned on by default. Flipped `sm_grpo.robust_normalize` to `true` in
+`configs/config.yaml` (was `false`), added a loud warning to
+`state_matched_baselines`'s docstring, and verified with a 10-iteration check
+(`logs/`, not committed) that it prevents the immediate collapse before committing to a
+full 60-iteration re-run (`scripts/run_month3_sm_grpo_v2.sh`,
+`logs/month3_sm_grpo_v2_robust.log`). **Results of that full run are in the next
+section** (or pending, if you're reading this before it's finished).
+
+**Lesson for next session:** before trusting *any* advantage estimator's comparison
+against GRPO/PPO in this codebase, check `advantage_abs_mean` in TensorBoard first — it's
+logged but not printed to stdout, so it's easy to miss a scale mismatch like this one
+just from the printed `[iter ...]` lines.
+
+## 2026-10-25 — Month 3 kicked off: first real SM-GRPO run (v1, see correction above)
 
 Launched `scripts/run_month3_sm_grpo.sh`: SM-GRPO (Idea A, `k=4`, `time_window=5`) at
 the exact Month-2-matched settings (pick-place-v3, BC warm-start, `groups=20`,
