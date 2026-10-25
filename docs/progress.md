@@ -1,5 +1,43 @@
 # Progress log
 
+## 2026-10-25 — LR sweep: the "collapse" is partly a step-size artifact
+
+Follow-up to the open question below. Ran GRPO at `lr=3e-5` and `lr=3e-6` (vs. the
+original `lr=3e-4`), 25 iterations each, same everything else (`scripts/run_lr_sweep.sh`,
+logs in `logs/grpo_lr*.log`):
+
+| lr | mean success_rate | first-5-iter mean | last-5-iter mean | max | iters at 0% |
+|---|---|---|---|---|---|
+| 3e-4 (Month 2 run) | → 0 and stays there | 0.062 | **0.000** | 0.056 | 54/60 (iter 6 onward) |
+| 3e-5 | 0.063 | 0.066 | 0.050 | 0.208 | 4/25 |
+| 3e-6 | 0.062 | 0.067 | 0.050 | 0.167 | 5/25 |
+
+**Verdict: the original lr=3e-4 result overstates GRPO's instability.** At 10x and 100x
+lower LR, GRPO does *not* collapse to a permanent 0% floor — it stays noisy, bouncing
+between 0% and up to 17-21% success rate, which is qualitatively different from the
+irreversible collapse seen at the higher LR. So part of the Month-2 "collapse" was a
+too-large step size amplifying whatever noisy/degenerate-group gradient GRPO produces
+into a destructive update, not pure advantage-estimator instability independent of step
+size.
+
+**But this isn't a clean exoneration of GRPO either:** at the lower LRs, GRPO is merely
+*not collapsing* — it shows no clear upward trend over these 25 iterations (first-5 mean
+≈ last-5 mean ≈ 0.05-0.07 at both LRs), whereas Month 2's PPO run climbed steadily from
+~5% to ~29-31% over a comparable number of steps. So the refined picture is: **GRPO is
+highly LR-sensitive (collapses at a step size PPO tolerates fine) and, even at a
+safe LR, doesn't show PPO's steady improvement in this short a window** — both still
+support the roadmap's core research question (a stable, sample-efficient, critic-free
+method is the open problem), just with "collapses outright" softened to "collapses at
+naive LR, stagnates at safe LR."
+
+**Caveat on this sweep itself:** only 25 iterations (375k env steps) per LR — too short
+to rule out GRPO starting to climb later, the way PPO's own early iterations also looked
+flat/noisy before trending up around iteration 20+ in the Month 2 run. **Next step:**
+rerun GRPO at lr=3e-5 (or a small sweep around it) for the full 60 iterations before
+treating "GRPO stagnates even at a safe LR" as settled, and do the same lr-matching for
+RLOO/TGRPO rather than assuming they behave identically to GRPO just because they looked
+identical at lr=3e-4.
+
 ## 2026-10-25 — Month 2: reproduced the GRPO collapse
 
 Ran `scripts/run_month2_comparison.sh`: PPO, GRPO, RLOO, TGRPO, all warm-started from the
