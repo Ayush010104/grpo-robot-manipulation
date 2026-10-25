@@ -1,5 +1,38 @@
 # Progress log
 
+## 2026-10-25 — Month 2 final verdict (properly controlled): GRPO degrades at both LRs
+
+`scripts/run_lr_matched_batch.sh` finished: GRPO at `lr=3e-5`, `groups=20` (matching the
+real Month-2 batch size exactly), full 60 iterations. Plot:
+`analysis/month2_lr_matched_final.png`.
+
+| run | first-10 mean | last-10 mean | last-5 mean | max |
+|---|---|---|---|---|
+| PPO, lr=3e-4 | ~0.06 | — | **0.266** | 0.306 |
+| GRPO, lr=3e-4 (original Month 2) | 0.062 | 0.000 (from iter 6 on) | 0.000 | 0.056 |
+| **GRPO, lr=3e-5 (matched batch)** | **0.054** | **0.019** | **0.010** | **0.094** |
+
+**Verdict, now properly controlled for batch size: lower LR does not fix GRPO's
+degradation, it only slows it down.** At `lr=3e-5` GRPO doesn't hit a hard 0% floor the
+way it does at `lr=3e-4`, but it still trends *downward* over the full 60 iterations
+(first-10 mean 0.054 → last-10 mean 0.019, roughly a 65% relative decline) while PPO
+climbs to ~27-31% over the same budget. **This restores confidence in the original
+Month-2 headline finding** — GRPO's problem on this task isn't simply "the Hopper-v5
+learning rate was too high for a BC-warm-started policy," it degrades at both a 10x-lower
+LR and the original LR, just at different speeds. This is consistent with the roadmap's
+framing (Section 4.2): a real advantage-estimator / group-construction issue, which is
+what motivates Month 3's SM-GRPO, not merely a hyperparameter that needed tuning.
+
+**Still open, for rigor before writing this up as a result:** RLOO and TGRPO haven't
+been re-tested at matched batch size + lower LR (only GRPO was, to answer the question
+cheaply) — they looked identical to GRPO at `lr=3e-4`/`groups=3`, but that run is now
+known to be batch-mismatched, so don't cite their lr=3e-5 behavior without a matched-batch
+re-run. `degenerate_group_frac` in the matched lr=3e-5 run climbs to ~0.90-0.95 by the
+final iterations (using the now-fixed success-based diagnostic) — worth plotting
+alongside success_rate next session, since "most groups becoming degenerate as training
+progresses" would be a very direct confirmation of the Section 4.2 #3 sparse-reward
+failure mode as the actual mechanism, not just a correlated symptom.
+
 ## 2026-10-25 — CORRECTION: the LR-sweep conclusion below was confounded by batch size
 
 **The "GRPO collapse is partly a step-size artifact" conclusion in the section below is
