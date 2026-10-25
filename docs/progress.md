@@ -1,5 +1,62 @@
 # Progress log
 
+## 2026-10-25 — Month 3 v2 result: fixed, but still an honest negative/neutral finding
+
+`scripts/run_month3_sm_grpo_v2.sh` finished (full 60 iterations, `robust_normalize=true`,
+`lr=3e-4`, `groups=20`, same everything else as the controlled Month-2 baselines). Full
+five-way comparison plot: `analysis/month3_full_comparison.png`.
+
+| run | last-5 mean success | collapses to a hard 0% floor? | when |
+|---|---|---|---|
+| PPO, lr=3e-4 | **0.266** | no — climbs | — |
+| GRPO, lr=3e-5 | 0.010 | no — stays noisy/nonzero | — |
+| **SM-GRPO v2, lr=3e-4 (fixed)** | **0.000** | **yes** | **~iteration 19-20** |
+| GRPO, lr=3e-4 | 0.000 | yes | ~iteration 6 |
+| SM-GRPO v1, lr=3e-4 (buggy, unnormalized) | 0.000 | yes | ~iteration 3 |
+
+**Honest read: fixing the normalization bug helped (collapses later than v1, and later
+than vanilla GRPO at the same LR), but SM-GRPO still ends up at the same destination —
+a hard, permanent 0% success floor — within the 60-iteration budget.** It does *not*
+currently beat GRPO at its best setting (`lr=3e-5`, which degrades but never hits a hard
+floor). So as implemented today (`k=4`, `time_window=5`, identity/raw-obs embedding),
+**SM-GRPO has not yet demonstrated an advantage over vanilla GRPO** — Idea A's core claim
+(state-matched per-step baselines reduce the instability from Section 4.2) is not yet
+supported by these runs.
+
+**One more scale-mismatch wrinkle worth knowing before reading too much into the "v2
+collapses slower" result:** `sm_grpo v2`'s `advantage_abs_mean` at iteration 0 was
+**~0.21-0.24** — noticeably *smaller* than GRPO's ~0.74-0.85 at the same nominal LR (not
+larger, this time). `robust_normalize` divides by `robust_scale(group.returns)`, a
+group-level trajectory-return scale, which isn't the same normalization GRPO itself uses
+(division by the group's own std) — the two aren't actually scale-matched to each other,
+just each individually "reasonable." So part of why v2 collapses *slower* than vanilla
+GRPO could simply be a smaller effective step size again, not evidence that state-matching
+itself is a better credit-assignment signal. **This confound needs to be closed (e.g., by
+making both algorithms' advantages have matched unit variance, the way PPO's GAE
+normalization does) before SM-GRPO vs. GRPO head-to-head results can be trusted.**
+
+**What this session did NOT do, which is the obvious next step:** the actual Month-3
+ablation sweep the roadmap asks for (k, time_window, embedding choice, with/without
+common random numbers) — this was only ever "does a first naive run work at all," and the
+honest answer right now is "not yet, and the normalization confound above needs fixing
+before the comparison is even fair." Recommended next steps, in order:
+1. Properly scale-match GRPO's and SM-GRPO's advantages (e.g. z-score both to unit
+   variance over the training batch) before any further head-to-head comparison.
+2. Only then run the k / time_window ablation.
+3. Consider whether the identity embedding (raw 39-dim Meta-World obs) is actually a
+   good state-similarity metric for k-NN matching -- per-dimension scales are fairly
+   uniform here (checked: std 0.02-0.2 across dims, no dominant-scale dimension), so this
+   is probably not the first thing to fix, but worth a sanity check (e.g., does k-NN
+   actually find states from a similar *phase* of the task, not just nearby raw
+   coordinates) once (1) and (2) are settled.
+
+This is a good stopping point for an unattended session: Month 2 is fully and rigorously
+settled (GRPO/RLOO/TGRPO underperform PPO, confirmed controlling for both LR and batch
+size), Month 3 has a first honest result plus two real implementation bugs found and
+fixed along the way, and the next steps require a judgment call (how to scale-match the
+advantages, which embedding to try) that's worth a human decision rather than more
+autonomous compute.
+
 ## 2026-10-25 — Month 3 v1 negative result diagnosed and fixed: missing normalization
 
 SM-GRPO's first run (below) collapsed *faster* than vanilla GRPO (0% success by
