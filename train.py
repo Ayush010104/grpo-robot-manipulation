@@ -103,16 +103,19 @@ def main(cfg: DictConfig) -> None:
                 policy, policy_optimizer, groups, reference_policy=reference_policy, device=device,
                 robust_normalize=cfg.grpo.robust_normalize, sigma_min=cfg.grpo.sigma_min,
                 grad_clip=cfg.training.grad_clip,
+                match_advantage_scale=cfg.training.match_advantage_scale,
             )
         elif cfg.algo == "rloo":
             diag = rloo.update(
                 policy, policy_optimizer, groups, reference_policy=reference_policy, device=device,
                 grad_clip=cfg.training.grad_clip,
+                match_advantage_scale=cfg.training.match_advantage_scale,
             )
         elif cfg.algo == "tgrpo":
             diag = tgrpo.update(
                 policy, policy_optimizer, groups, reference_policy=reference_policy, device=device,
                 alpha=cfg.tgrpo.alpha, gamma=cfg.training.gamma, grad_clip=cfg.training.grad_clip,
+                match_advantage_scale=cfg.training.match_advantage_scale,
             )
         elif cfg.algo == "sm_grpo":
             diag = sm_grpo.update(
@@ -120,6 +123,7 @@ def main(cfg: DictConfig) -> None:
                 k=cfg.sm_grpo.k, time_window=cfg.sm_grpo.time_window,
                 robust_normalize=cfg.sm_grpo.robust_normalize, sigma_min=cfg.sm_grpo.sigma_min,
                 gamma=cfg.training.gamma, grad_clip=cfg.training.grad_clip,
+                match_advantage_scale=cfg.training.match_advantage_scale,
             )
         elif cfg.algo == "ppo":
             diag = ppo.update(

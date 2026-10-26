@@ -21,6 +21,13 @@ training:
   gamma: 0.99
   lr: 3.0e-4
   grad_clip: 1.0
+  # Z-score the final advantage batch to zero-mean/unit-variance (algos/common.py's
+  # normalize_batch_advantages), applied identically across grpo/rloo/tgrpo/sm_grpo.
+  # Added 2026-10-26 after finding GRPO's and SM-GRPO's "normalized" advantages weren't
+  # actually on the same scale as each other (docs/progress.md) -- turn this on for any
+  # head-to-head comparison between critic-free algos so a shared LR means a shared
+  # effective step size. Off by default to keep existing per-algo runs reproducible.
+  match_advantage_scale: false
   eval_every: 10
   checkpoint_every: 50
   log_dir: outputs

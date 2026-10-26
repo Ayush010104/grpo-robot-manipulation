@@ -11,6 +11,7 @@ from algos.common import (
     flatten_group_steps,
     group_diagnostics,
     kl_to_reference,
+    normalize_batch_advantages,
 )
 from algos.rollout_buffer import RolloutGroup
 from advantages.group_baselines import (
@@ -29,6 +30,7 @@ def update(
     robust_normalize: bool = False,  # Idea B toggle
     sigma_min: float = 1e-2,
     grad_clip: float = 1.0,
+    match_advantage_scale: bool = False,
 ) -> dict:
     per_traj_adv = []
     degenerate_mask = []
@@ -46,6 +48,8 @@ def update(
         )
 
     obs_np, act_np, adv_np = flatten_group_steps(groups, per_traj_adv)
+    if match_advantage_scale:
+        adv_np = normalize_batch_advantages(adv_np)
     obs = torch.as_tensor(obs_np, dtype=torch.float32, device=device)
     actions = torch.as_tensor(act_np, dtype=torch.float32, device=device)
     advantages = torch.as_tensor(adv_np, dtype=torch.float32, device=device)

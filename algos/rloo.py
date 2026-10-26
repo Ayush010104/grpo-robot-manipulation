@@ -7,7 +7,13 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from algos.common import clip_grad_and_step, flatten_group_steps, group_diagnostics, kl_to_reference
+from algos.common import (
+    clip_grad_and_step,
+    flatten_group_steps,
+    group_diagnostics,
+    kl_to_reference,
+    normalize_batch_advantages,
+)
 from algos.rollout_buffer import RolloutGroup
 from advantages.group_baselines import is_degenerate_group_by_success, leave_one_out_advantages
 
@@ -19,6 +25,7 @@ def update(
     reference_policy=None,
     device: str = "cpu",
     grad_clip: float = 1.0,
+    match_advantage_scale: bool = False,
 ) -> dict:
     per_traj_adv = []
     degenerate_mask = []
@@ -32,6 +39,8 @@ def update(
         )
 
     obs_np, act_np, adv_np = flatten_group_steps(groups, per_traj_adv)
+    if match_advantage_scale:
+        adv_np = normalize_batch_advantages(adv_np)
     obs = torch.as_tensor(obs_np, dtype=torch.float32, device=device)
     actions = torch.as_tensor(act_np, dtype=torch.float32, device=device)
     advantages = torch.as_tensor(adv_np, dtype=torch.float32, device=device)

@@ -1,5 +1,32 @@
 # Progress log
 
+## 2026-10-26 — Closed the scale-mismatch confound, launched the real GRPO-vs-SM-GRPO test
+
+Follow-up to 2026-10-25's note that SM-GRPO v2's `advantage_abs_mean` (~0.21-0.24) and
+GRPO's (~0.74-0.85) weren't actually scale-matched to each other despite both being
+individually "normalized" -- so any earlier head-to-head wasn't trustworthy.
+
+**Fix**: added `training.match_advantage_scale` (default `false`, so existing runs stay
+reproducible) to `configs/config.yaml`, wired through `grpo.py`, `rloo.py`, `tgrpo.py`,
+`sm_grpo.py` -- when `true`, the final flattened advantage batch is z-scored to
+zero-mean/unit-variance (`algos/common.py::normalize_batch_advantages`, which already
+existed but was unused) right before the policy-gradient loss, for every critic-free algo
+identically. PPO doesn't need this -- its own GAE advantages are already batch-normalized.
+
+**Verified with a 2-iteration smoke test** before committing to a long run:
+`advantage_abs_mean` with `match_advantage_scale=true` came out to 0.705-0.846 (GRPO) vs.
+0.464-0.467 (SM-GRPO) -- much closer than the prior 17x and 3-4x mismatches. Not
+*identical*, and that's expected: GRPO's advantage is piecewise-constant across an entire
+trajectory (same value broadcast to every step) while SM-GRPO's varies continuously
+per-step, so even at matched batch variance the two have different mean-absolute-value
+under a different distribution shape. This is close enough to trust a head-to-head now.
+
+**Launched** `scripts/run_month3_scale_matched.sh`: GRPO and SM-GRPO, both with
+`match_advantage_scale=true`, same settings as every other Month-2/3 run (`groups=20`,
+`lr=3e-4`, BC warm-start on pick-place-v3), full 60 iterations each, in parallel. This is
+the first comparison between these two algorithms that should actually be fair. Results
+pending -- check `logs/month3_grpo_scalematched.log` / `logs/month3_sm_grpo_scalematched.log`.
+
 ## 2026-10-25 — Month 3 v2 result: fixed, but still an honest negative/neutral finding
 
 `scripts/run_month3_sm_grpo_v2.sh` finished (full 60 iterations, `robust_normalize=true`,

@@ -7,7 +7,12 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from algos.common import clip_grad_and_step, group_diagnostics, kl_to_reference
+from algos.common import (
+    clip_grad_and_step,
+    group_diagnostics,
+    kl_to_reference,
+    normalize_batch_advantages,
+)
 from algos.rollout_buffer import RolloutGroup
 from advantages.group_baselines import (
     fuse_trajectory_and_step,
@@ -44,6 +49,7 @@ def update(
     alpha: float = 0.5,  # trajectory/step fusion weight
     gamma: float = 1.0,
     grad_clip: float = 1.0,
+    match_advantage_scale: bool = False,
 ) -> dict:
     obs_chunks, act_chunks, adv_chunks = [], [], []
     degenerate_mask = []
@@ -66,6 +72,8 @@ def update(
     obs_np = np.concatenate(obs_chunks, axis=0)
     act_np = np.concatenate(act_chunks, axis=0)
     adv_np = np.concatenate(adv_chunks, axis=0)
+    if match_advantage_scale:
+        adv_np = normalize_batch_advantages(adv_np)
 
     obs = torch.as_tensor(obs_np, dtype=torch.float32, device=device)
     actions = torch.as_tensor(act_np, dtype=torch.float32, device=device)

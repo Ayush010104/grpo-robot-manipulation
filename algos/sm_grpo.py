@@ -15,7 +15,12 @@ from typing import Callable, Optional
 import numpy as np
 import torch
 
-from algos.common import clip_grad_and_step, group_diagnostics, kl_to_reference
+from algos.common import (
+    clip_grad_and_step,
+    group_diagnostics,
+    kl_to_reference,
+    normalize_batch_advantages,
+)
 from algos.rollout_buffer import RolloutGroup
 from advantages.group_baselines import (
     is_degenerate_group_by_success,
@@ -44,6 +49,7 @@ def update(
     sigma_min: float = 1e-2,
     gamma: float = 1.0,
     grad_clip: float = 1.0,
+    match_advantage_scale: bool = False,
 ) -> dict:
     embedding_fn = embedding_fn or _default_embedding
 
@@ -73,6 +79,8 @@ def update(
     obs_np = np.concatenate(obs_chunks, axis=0)
     act_np = np.concatenate(act_chunks, axis=0)
     adv_np = np.concatenate(adv_chunks, axis=0)
+    if match_advantage_scale:
+        adv_np = normalize_batch_advantages(adv_np)
 
     obs = torch.as_tensor(obs_np, dtype=torch.float32, device=device)
     actions = torch.as_tensor(act_np, dtype=torch.float32, device=device)
