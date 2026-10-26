@@ -1,5 +1,67 @@
 # Progress log
 
+## 2026-10-26 — Group-size scaling: the strongest result in the project so far (in progress)
+
+Early results from `scripts/run_month3_scale_up.sh` (GRPO, `hidden_sizes=[512,512]`,
+`match_advantage_scale=true`, `lr=3e-4`; G=64 at 13/60 iterations, G=128 at 10/60 --
+**both still running**, numbers below will firm up):
+
+| config | iterations so far | degenerate_group_frac | success rate range | mean success |
+|---|---|---|---|---|
+| GRPO, G=8, net=[256,256] | 60/60 (done) | climbed to 0.90-1.00 | collapsed to 0% by iter ~13 | 0.0035 |
+| **GRPO, G=64, net=[512,512]** | 13/60 | **0.00 every iteration so far** | **7.8% - 16.7%, no collapse** | **0.118** |
+| **GRPO, G=128, net=[512,512]** | 10/60 | **0.00 every iteration so far** | **10.2% - 18.0%, no collapse** | **0.132** |
+
+**This is the best GRPO result in the whole project.** Zero degenerate groups in every
+single iteration so far (vs. climbing to 90-100% at G=8), and success rate holding
+*stably* in the 10-18% range rather than collapsing -- already well above G=8's brief
+peak of 5.6% before it died. Plot: `analysis/results_to_date_full.png` (right panel).
+
+**Important caveat -- this is confounded, not a clean G-only ablation:** the network
+size changed too (`[256,256]` -> `[512,512]`), because the BC checkpoint had to be
+retrained at the new size to warm-start from. So this result shows "bigger group +
+bigger network helps a lot," not "bigger group alone helps" -- disentangling the two
+(e.g. G=64 at the *original* `[256,256]` network, or G=8 at `[512,512]`) is the natural
+next ablation before attributing the improvement to group size specifically.
+
+**Also still incomplete:** both runs are ~15-20% of the way through their 60-iteration
+budget. The pattern (zero degenerate groups, stable success rate) has been completely
+consistent so far, but "stable for 10-13 iterations" is not yet "stable for 60" --
+worth re-checking once they finish before calling this settled.
+
+## 2026-10-26 — Operational note: TGRPO crashed (disk space), RLOO/TGRPO ablation data
+
+`logs/month3_tgrpo_scalematched.log` crashed with `OSError: [Errno 28] No space left on
+device` at iteration 26/60 -- `df -h /` showed only 4.3GB free (74% used) at the time.
+This is a **system-level disk space issue on this Mac, not caused by this project**
+(the project's own `outputs/`/`checkpoints/` dirs total a few MB) -- worth the user
+checking what's consuming disk space generally. Relaunched TGRPO
+(`logs/month3_tgrpo_scalematched_retry.log`, with `PYTHONUNBUFFERED=1` this time).
+
+Partial data before the crash, plus RLOO's data (37/60 iterations, still running) --
+useful for the "is SM-GRPO's delay specific to state-matching" question even
+incomplete:
+
+| algo (G=8, scale-matched) | nonzero iterations | last nonzero iter | overall mean success |
+|---|---|---|---|
+| GRPO | 8/60 | 13 | 0.0035 |
+| RLOO (37/60 so far) | 8/37 | 13 | 0.0056 |
+| TGRPO (26/60, crashed) | 10/26 | 25 (incomplete -- crashed while still nonzero) | 0.0058 |
+| **SM-GRPO (full 60/60)** | **27/60** | **39** | **0.0081** |
+
+RLOO tracks GRPO almost exactly (same last-nonzero iteration, 13) -- leave-one-out vs.
+group-mean baseline doesn't matter much here. TGRPO's data is too incomplete to
+conclude anything (it was still nonzero when it crashed) -- **wait for the TGRPO
+retry to finish before drawing the "is it state-matching specifically" conclusion**;
+right now it's the one open question the Month-3 positive result still depends on.
+
+Also found a second instance of the TensorBoard-output-directory collision from
+Month 2 (two `train.py` processes launched within the same wall-clock second get the
+same `outputs/<date>/<time>/` dir and overwrite each other's event files) -- affected
+the G=64/G=128 group-size runs tonight. Not yet fixed in code (just worked around by
+reading the per-process stdout logs instead, which are written to distinct files); a
+proper fix would make `train.py`'s log directory include the PID or a random suffix.
+
 ## 2026-10-26 — Novel extension proposed and implemented: MM-GRPO (not yet run)
 
 User asked for "something novel." Diagnosis of why GRPO fails here (see chat) comes down

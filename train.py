@@ -79,7 +79,12 @@ def main(cfg: DictConfig) -> None:
         for p in reference_policy.parameters():
             p.requires_grad_(False)
 
-    log_dir = os.path.join(cfg.training.log_dir, cfg.algo, time.strftime("%Y%m%d-%H%M%S"))
+    # PID suffix: two processes launched within the same wall-clock second otherwise get
+    # the same dir and silently overwrite each other's TensorBoard event files (bit us
+    # twice -- Month 2's 4-way run and the G=64/G=128 group-size runs, see docs/progress.md).
+    log_dir = os.path.join(
+        cfg.training.log_dir, cfg.algo, f"{time.strftime('%Y%m%d-%H%M%S')}-pid{os.getpid()}"
+    )
     os.makedirs(log_dir, exist_ok=True)
     writer = None
     try:
