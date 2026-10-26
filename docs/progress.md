@@ -1,5 +1,45 @@
 # Progress log
 
+## 2026-10-26 — First positive (partial) result: SM-GRPO measurably delays the collapse
+
+`scripts/run_month3_scale_matched.sh` finished. Plot: `analysis/month3_scale_matched_final.png`.
+
+| run | nonzero-success iterations | last nonzero iter (of 60) | overall mean success | last-5 mean |
+|---|---|---|---|---|
+| PPO, lr=3e-4 | 60/60 | — (never zero) | 0.135 | 0.266 |
+| GRPO, scale-matched, lr=3e-4 | 8/60 | iteration 13 | 0.0035 | 0.000 |
+| **SM-GRPO, scale-matched, lr=3e-4** | **27/60** | **iteration 39** | **0.0081** | 0.000 |
+
+**This is the first comparison in the whole project where SM-GRPO beats vanilla GRPO
+under conditions I'd actually call fair** (same batch size, same LR, same advantage
+scale). GRPO is functionally dead by iteration ~6-13 (one stray nonzero blip at 13, then
+permanently 0 for the remaining 46 iterations). SM-GRPO keeps producing successful
+rollouts intermittently all the way to iteration 39 — roughly **3x longer** before going
+fully silent — and its overall mean success rate across the full run is **2.3x GRPO's**.
+
+**Being precise about what this is and isn't:** SM-GRPO does *not* solve the problem.
+Both algorithms end at a hard 0% success floor by the end of the 1.44M-step budget, and
+neither gets remotely close to PPO's ~27-31%. What this run shows is narrower and more
+defensible: **state-matched per-step baselines measurably slow the collapse relative to
+vanilla GRPO's whole-trajectory baseline, under matched advantage scale, LR, and batch
+size.** That's a real, positive signal for Idea A's core mechanism (Section 4.2's claim
+that trajectory-level comparisons are noisier than they need to be) — the first one this
+project has produced after two negative/confounded attempts.
+
+**Caveats before this goes in a paper draft:**
+- Single seed, single task (pick-place-v3), single hyperparameter setting (k=4,
+  time_window=5) — the roadmap's actual ablation sweep (k, time_window, embedding,
+  seeds) still hasn't run. This result could be noise; it needs replication before it's
+  a claim, not just a lead.
+- "Delays collapse by 3x" is still a negative outcome in absolute terms (collapses
+  either way) — the honest framing for a paper is "reduces instability" or "partially
+  mitigates," not "solves" or "stabilizes."
+- RLOO and TGRPO still haven't been re-tested with `match_advantage_scale=true` — it's
+  possible they'd show a similar partial delay too, which would weaken the claim that
+  state-matching *specifically* (vs. any alternative critic-free baseline) is doing the
+  work. This is the most important next experiment to rule out before trusting the
+  result above as evidence for Idea A specifically.
+
 ## 2026-10-26 — Closed the scale-mismatch confound, launched the real GRPO-vs-SM-GRPO test
 
 Follow-up to 2026-10-25's note that SM-GRPO v2's `advantage_abs_mean` (~0.21-0.24) and
