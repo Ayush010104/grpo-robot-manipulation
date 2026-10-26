@@ -1,6 +1,58 @@
 # Progress log
 
-## 2026-10-26 — Group-size scaling: the strongest result in the project so far (in progress)
+## 2026-10-27 — CORRECTION: group size delays the collapse, doesn't fix it; full ablation data
+
+The session restarted overnight (killed all 4 background jobs -- no checkpointing was
+saved, `checkpoint_every=1000` on 60-iteration runs means none of these hit a
+checkpoint; worth fixing, see below). Before reporting the final numbers, pulled
+whatever each process had actually logged (stdout where `PYTHONUNBUFFERED=1` was set,
+TensorBoard otherwise, which flushes independently of stdout buffering).
+
+**Group-size scaling -- the 2026-10-26 "strongest result yet" writeup was premature.**
+With the full trajectory now visible (plot: `analysis/group_size_corrected.png`):
+
+| config | iterations reached | pattern |
+|---|---|---|
+| GRPO, G=8, net=[256,256] | 60/60 (complete) | collapses hard by iter ~6-13, `degenerate_frac` -> 1.00 |
+| GRPO, G=64, net=[512,512] | 27/60 (stopped) | **stable 8-17% through iter ~13, then declines, `degenerate_frac` starts climbing at iter 19, fully degenerate (1.00) by iter 26 -- it DOES eventually collapse, just ~2x later than G=8** |
+| GRPO, G=128, net=[512,512] | 20/60 (stopped) | stable/slowly declining 18%->5.5% through iter 19, **`degenerate_frac` = 0.00 every single iteration so far** -- declining in success rate without the group-degeneracy mechanism that's killing G=8/G=64 |
+
+**Corrected takeaway: larger G delays the collapse (roughly proportionally -- G=64
+survived ~2x longer than G=8), it does not eliminate it.** G=128 hasn't shown
+degenerate groups yet, but it's also only 1/3 of the way through its budget and its
+success rate is declining anyway (18%->5.5%), so "G=128 solves it" is not yet a
+supportable claim either -- it may just be that 128 is enough to delay group
+degeneracy past where this run got cut off, not that the mechanism is fixed. The
+success-rate decline happening even at `degenerate_frac=0.00` for G=128 is worth a note
+for next session: it suggests group-level degeneracy isn't the *only* thing driving the
+decline -- something else (policy entropy collapsing with training? the group std
+denominator shrinking even without full agreement?) may also be eroding performance,
+independent of the specific failure mode the group-size experiment targeted.
+
+**RLOO and TGRPO ablation (both now effectively complete or near-complete):**
+
+| algo (G=8, scale-matched) | iterations | nonzero | last nonzero iter | overall mean |
+|---|---|---|---|---|
+| GRPO | 60/60 | 8/60 | 13 | 0.0035 |
+| RLOO | 54/60 (stopped, 41 straight zeros before that) | 8/54 | 13 | 0.0038 |
+| TGRPO | 16/60 (stopped) | already mostly 0 by iter 13-16 | ~13-16 | n/a, too short |
+| **SM-GRPO** | 60/60 (complete) | **27/60** | **39** | **0.0081** |
+
+**This closes the ablation-isolation question from 2026-10-26:** RLOO (trajectory-level,
+leave-one-out baseline) collapses identically to GRPO (same last-nonzero iteration: 13).
+TGRPO (per-step, but same-timestep alignment, not state-matched) also collapses early,
+same ballpark as GRPO/RLOO. **Only SM-GRPO, with actual k-NN state-matching, shows the
+~3x delay.** This is good evidence the earlier positive result really is about
+state-*matching* specifically, not just "any critic-free variant" or "any per-step
+signal" -- strengthens Idea A's case.
+
+**Operational fix for next time:** none of tonight's 60-iteration runs ever hit a
+checkpoint (`checkpoint_every=1000`), so a session restart loses everything and forces
+a full restart from the BC checkpoint with no way to resume. Should default
+`checkpoint_every` much lower (e.g. 5-10) for any run expected to take this long, given
+session restarts have now interrupted background jobs twice in two days.
+
+## 2026-10-26 — Group-size scaling: the strongest result in the project so far (in progress, SUPERSEDED by the correction above)
 
 Early results from `scripts/run_month3_scale_up.sh` (GRPO, `hidden_sizes=[512,512]`,
 `match_advantage_scale=true`, `lr=3e-4`; G=64 at 13/60 iterations, G=128 at 10/60 --
