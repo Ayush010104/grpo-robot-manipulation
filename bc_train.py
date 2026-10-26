@@ -27,6 +27,11 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--device", default=None)
     ap.add_argument("--out", required=True)
+    ap.add_argument(
+        "--hidden-sizes", type=int, nargs="+", default=[256, 256],
+        help="Policy MLP hidden layer sizes -- must match train.py's policy.hidden_sizes "
+        "for any RL run that warm-starts from this checkpoint (state_dict shapes must agree).",
+    )
     args = ap.parse_args()
 
     device = args.device or ("mps" if torch.backends.mps.is_available() else "cpu")
@@ -34,8 +39,9 @@ def main():
     d = np.load(args.data)
     obs, actions = d["obs"], d["actions"]
     print(f"loaded {len(obs)} transitions from {args.data} (obs_dim={obs.shape[1]} act_dim={actions.shape[1]})")
+    print(f"policy hidden_sizes={args.hidden_sizes}")
 
-    policy = GaussianMLPPolicy(obs.shape[1], actions.shape[1]).to(device)
+    policy = GaussianMLPPolicy(obs.shape[1], actions.shape[1], hidden_sizes=args.hidden_sizes).to(device)
     optimizer = torch.optim.Adam(policy.parameters(), lr=args.lr)
 
     obs_t = torch.as_tensor(obs, dtype=torch.float32, device=device)

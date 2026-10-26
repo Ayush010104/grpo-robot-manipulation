@@ -55,6 +55,11 @@ def main():
     ap.add_argument("--max-steps", type=int, default=150)
     ap.add_argument("--seed", type=int, default=1000)  # disjoint from BC-data seeds
     ap.add_argument("--device", default=None)
+    ap.add_argument(
+        "--hidden-sizes", type=int, nargs="+", default=[256, 256],
+        help="Must match the checkpoint's own hidden_sizes (bc_train.py --hidden-sizes / "
+        "train.py's policy.hidden_sizes) or state_dict loading will fail.",
+    )
     args = ap.parse_args()
 
     device = args.device or ("mps" if torch.backends.mps.is_available() else "cpu")
@@ -65,7 +70,7 @@ def main():
     act_dim = int(np.prod(probe.action_space.shape))
     probe.close()
 
-    policy = GaussianMLPPolicy(obs_dim, act_dim).to(device)
+    policy = GaussianMLPPolicy(obs_dim, act_dim, hidden_sizes=args.hidden_sizes).to(device)
     policy.load_state_dict(torch.load(args.checkpoint, map_location=device))
     policy.eval()
 

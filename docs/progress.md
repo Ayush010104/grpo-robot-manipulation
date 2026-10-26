@@ -1,5 +1,36 @@
 # Progress log
 
+## 2026-10-26 — Group-size scale-up launched (G=64, G=128) + larger network
+
+User-requested follow-up: does a much larger within-group sample size (G) mitigate
+GRPO's instability, with more policy capacity? Motivated by the diagnosis that small
+G=8 groups give noisy, easily-degenerate comparisons (`degenerate_group_frac` climbed to
+~0.90-0.95 in the G=8 scale-matched runs).
+
+- Added `--hidden-sizes` to `bc_train.py` and `eval.py` (previously hardcoded to
+  `[256, 256]`) so a differently-sized network can be trained/evaluated.
+- Retrained the BC checkpoint at `[512, 512]` (doubled from `[256, 256]`):
+  `checkpoints/bc_pick-place-v3_512.pt`, 13.3% success over 30 eval episodes
+  (comparable to the original `[256,256]` checkpoint's 16.7% -- not identical, expected,
+  different network/training run, same ballpark).
+- Launched `scripts/run_month3_scale_up.sh`: GRPO with `hidden_sizes=[512,512]`,
+  `match_advantage_scale=true`, `lr=3e-4`, at **G=64** (`num_groups_per_iteration=3`,
+  192 episodes/iter) and **G=128** (`num_groups_per_iteration=2`, 256 episodes/iter) --
+  `num_groups_per_iteration` reduced as G grows to keep episodes/iteration roughly
+  comparable to the existing G=8/groups=20 runs (~160/iter), so wall-clock per iteration
+  stays in the same ballpark rather than scaling 8-16x. 60 iterations each. Results
+  pending in `logs/month3_grpo_g64_net512.log` / `logs/month3_grpo_g128_net512.log`.
+
+**Operational note for future background runs:** found that piped/redirected Python
+stdout is block-buffered by default, so a healthy, actively-running background job's log
+file can look empty for a long time -- this caused a false "the job died silently"
+diagnosis mid-session (it hadn't; a stale `ps aux | grep "python train.py"` pattern that
+doesn't match the capitalized `Python` binary name in `ps` output also contributed, and
+very nearly caused a duplicate run to be launched on top of the still-healthy original).
+Added `export PYTHONUNBUFFERED=1` to `run_month3_scale_up.sh`; worth adding to future
+scripts, and checking `ps aux | grep train.py` (no `python` prefix) rather than `grep
+"python train.py"` when verifying a background job is actually running.
+
 ## 2026-10-26 — First positive (partial) result: SM-GRPO measurably delays the collapse
 
 `scripts/run_month3_scale_matched.sh` finished. Plot: `analysis/month3_scale_matched_final.png`.
