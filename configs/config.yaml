@@ -11,7 +11,7 @@ env:
   backend: gymnasium  # "gymnasium" | "metaworld" | "libero"
   max_episode_steps: 200
 
-algo: grpo  # "ppo" | "grpo" | "rloo" | "tgrpo" | "sm_grpo"
+algo: grpo  # "ppo" | "grpo" | "rloo" | "tgrpo" | "sm_grpo" | "sm_grpo_memory"
 
 training:
   num_iterations: 200
@@ -77,3 +77,14 @@ ppo:
   value_coef: 0.5
   entropy_coef: 0.0
   value_lr: 1.0e-3
+
+sm_grpo_memory:
+  # MM-GRPO (novel extension, proposed 2026-10-26, see advantages/replay_buffer.py):
+  # like sm_grpo but the k-NN baseline also draws candidates from a persistent,
+  # cross-iteration buffer, not just the current group.
+  k: 4
+  time_window: 5
+  robust_normalize: true
+  sigma_min: 0.01
+  buffer_capacity: 50000
+  memory_max_age: null  # iterations; null = no recency limit on buffer candidates

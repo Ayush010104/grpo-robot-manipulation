@@ -98,10 +98,21 @@ def state_matched_baselines(
     group_returns_to_go: list[np.ndarray],
     k: int = 4,
     time_window: int = 5,
+    extra_states: np.ndarray | None = None,
+    extra_returns: np.ndarray | None = None,
 ) -> list[np.ndarray]:
     """Per-step, critic-free baseline from k-NN across the group's *other* rollouts in a
     low-dimensional state-embedding space, within a time window (roadmap Section 5, Idea
     A). Reduces variance from stochastic dynamics vs. a single whole-trajectory baseline.
+
+    `extra_states`/`extra_returns` (both optional, shape (N, D) / (N,)): an additional,
+    untimed candidate pool -- e.g. a cross-iteration replay buffer (MM-GRPO,
+    `advantages/replay_buffer.py`, proposed 2026-10-26). These have no trajectory/
+    timestep structure, so they're included as candidates for *every* query step
+    regardless of `time_window` (there's no "nearby timestep" concept for them) -- a
+    known approximation: a state from iteration 0 and a state from iteration 50 at
+    completely different points in their own episodes are compared purely on state
+    similarity, not on being at a "similar point in the task."
 
     IMPORTANT: unlike every other advantage function in this module, the returned value
     is a RAW, unnormalized `return_to_go - baseline` difference -- there is no division
@@ -145,6 +156,10 @@ def state_matched_baselines(
                     continue
                 candidates_states.append(group_states[j][lo:hi])
                 candidates_rtg.append(group_returns_to_go[j][lo:hi])
+
+            if extra_states is not None and len(extra_states) > 0:
+                candidates_states.append(extra_states)
+                candidates_rtg.append(extra_returns)
 
             if not candidates_states:
                 # No other rollout reaches a nearby timestep -- fall back to the group's

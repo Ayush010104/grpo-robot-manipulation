@@ -1,5 +1,46 @@
 # Progress log
 
+## 2026-10-26 — Novel extension proposed and implemented: MM-GRPO (not yet run)
+
+User asked for "something novel." Diagnosis of why GRPO fails here (see chat) comes down
+to two things PPO's critic gives that GRPO lacks: (1) a baseline that generalizes across
+the *whole* training run, not just one iteration's rollouts, and (2) a baseline that
+doesn't go degenerate just because one small group happened to agree. SM-GRPO already
+measurably helps with a version of (2) (the scale-matched comparison above). **MM-GRPO
+(Memory-Matched GRPO)** extends SM-GRPO to also address (1): give its k-NN search a
+persistent, cross-iteration memory of (state, return-to-go) pairs, not just the current
+group's siblings -- a non-parametric, critic-free approximation of a value function's
+cross-iteration generalization. A flat index over float vectors is orders of magnitude
+cheaper than a value network at VLA scale, so most of GRPO's memory advantage over PPO
+should survive.
+
+**Implemented and tested, not yet run:**
+- `advantages/replay_buffer.py`: `StateReturnBuffer`, a FIFO buffer of (state,
+  return-to-go, iteration) triples with optional age-based filtering.
+- `advantages/group_baselines.py`: `state_matched_baselines` takes optional
+  `extra_states`/`extra_returns` -- an untimed candidate pool merged into every query
+  step's k-NN search alongside the current group's siblings.
+- `algos/sm_grpo_memory.py`: identical to `sm_grpo.py` except it takes (and mutates) a
+  buffer + the current iteration index -- the one `update()` function in the codebase
+  that isn't stateless, since persistence across calls is the whole point.
+- `configs/config.yaml` / `train.py`: wired in as `algo=sm_grpo_memory`.
+- 6 new unit tests (`tests/test_replay_buffer.py`), all passing (18/18 total). Smoke-
+  tested end-to-end (4 iterations, buffer visibly accumulating across them).
+
+**Known risk, not yet mitigated:** buffer entries from early iterations reflect an
+older, usually-worse policy, so their return-to-go may not reflect what the *current*
+policy would get from a similar state -- the standard off-policy-baseline staleness
+problem. Current mitigation is just `memory_max_age` (a recency window); a
+policy-similarity-weighted variant is a natural follow-up, not implemented.
+
+**Why not launched yet:** 4 training processes already running (the RLOO/TGRPO ablation
+isolation + GRPO at G=64/G=128) on an 8-core machine with load average already ~10-12 --
+launching a 5th CPU-bound job now would slow all of them down proportionally rather than
+genuinely add parallel throughput. Queued to run once the current batch finishes.
+Suggested first config: same scale-matched settings as the SM-GRPO win above (`groups=20`,
+`group_size=8`, `lr=3e-4`, `match_advantage_scale=true`) so it's a direct, fair
+comparison against the ~3x-delay result SM-GRPO already achieved.
+
 ## 2026-10-26 — Group-size scale-up launched (G=64, G=128) + larger network
 
 User-requested follow-up: does a much larger within-group sample size (G) mitigate

@@ -1,4 +1,4 @@
-from . import grpo, ppo, rloo, sm_grpo, tgrpo
+from . import grpo, ppo, rloo, sm_grpo, sm_grpo_memory, tgrpo
 from .rollout_buffer import RolloutGroup, Trajectory, collect_group, collect_groups
 
 ALGOS = {
@@ -7,6 +7,7 @@ ALGOS = {
     "rloo": rloo,
     "tgrpo": tgrpo,
     "sm_grpo": sm_grpo,
+    "sm_grpo_memory": sm_grpo_memory,
 }
 
 __all__ = [
@@ -14,6 +15,7 @@ __all__ = [
     "ppo",
     "rloo",
     "sm_grpo",
+    "sm_grpo_memory",
     "tgrpo",
     "ALGOS",
     "RolloutGroup",

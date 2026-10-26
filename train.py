@@ -16,7 +16,8 @@ import numpy as np
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-from algos import collect_groups, grpo, ppo, rloo, sm_grpo, tgrpo
+from algos import collect_groups, grpo, ppo, rloo, sm_grpo, sm_grpo_memory, tgrpo
+from advantages.replay_buffer import StateReturnBuffer
 from envs import EnvSpec, make_env
 from policies import GaussianMLPPolicy, ValueMLP
 
@@ -65,6 +66,10 @@ def main(cfg: DictConfig) -> None:
     if cfg.algo == "ppo":
         value_fn = ValueMLP(obs_dim, hidden_sizes=cfg.policy.hidden_sizes).to(device)
         value_optimizer = torch.optim.Adam(value_fn.parameters(), lr=cfg.ppo.value_lr)
+
+    memory_buffer = None
+    if cfg.algo == "sm_grpo_memory":
+        memory_buffer = StateReturnBuffer(capacity=cfg.sm_grpo_memory.buffer_capacity)
 
     reference_policy = None
     if cfg.reference_policy.checkpoint:
@@ -122,6 +127,17 @@ def main(cfg: DictConfig) -> None:
                 policy, policy_optimizer, groups, reference_policy=reference_policy, device=device,
                 k=cfg.sm_grpo.k, time_window=cfg.sm_grpo.time_window,
                 robust_normalize=cfg.sm_grpo.robust_normalize, sigma_min=cfg.sm_grpo.sigma_min,
+                gamma=cfg.training.gamma, grad_clip=cfg.training.grad_clip,
+                match_advantage_scale=cfg.training.match_advantage_scale,
+            )
+        elif cfg.algo == "sm_grpo_memory":
+            diag = sm_grpo_memory.update(
+                policy, policy_optimizer, groups, buffer=memory_buffer, iteration=it,
+                reference_policy=reference_policy, device=device,
+                k=cfg.sm_grpo_memory.k, time_window=cfg.sm_grpo_memory.time_window,
+                memory_max_age=cfg.sm_grpo_memory.memory_max_age,
+                robust_normalize=cfg.sm_grpo_memory.robust_normalize,
+                sigma_min=cfg.sm_grpo_memory.sigma_min,
                 gamma=cfg.training.gamma, grad_clip=cfg.training.grad_clip,
                 match_advantage_scale=cfg.training.match_advantage_scale,
             )
