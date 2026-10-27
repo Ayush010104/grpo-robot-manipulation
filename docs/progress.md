@@ -1,5 +1,88 @@
 # Progress log
 
+## 2026-10-27b — Root cause of the collapse, and the first genuinely new result: MM-GRPO doesn't die
+
+Both relaunched jobs (G=128 continuation, MM-GRPO's first real run) completed the full
+60 iterations this time (`checkpoint_every=5` worked -- no restart hit mid-run anyway).
+Analysis script: `analysis/resilience_analysis.py`. Plot: `analysis/gradnorm_mechanism.png`.
+
+**G=128's open question is answered: it also collapses.** `degenerate_group_frac` hits
+1.00 at iteration 37 and success_rate goes to 0.000 and stays there through iteration 59
+(`logs/month3_grpo_g128_net512_round2.log`). So larger G does not prevent collapse, full
+stop -- it only delays the onset (G=8 ~iter 6-14, G=64 ~iter 19-26, G=128 ~iter 36-37).
+That settles the group-size question.
+
+**Root cause, with actual mechanistic evidence (not just a guess).** `clip_grad_norm_`
+in `algos/common.py::clip_grad_and_step` returns the *pre-clip* gradient norm before
+rescaling the step. Across every group-std-normalized method (GRPO, SM-GRPO, and GRPO at
+every tested G), once a critical fraction of groups goes degenerate, this pre-clip
+grad_norm does not shrink toward zero (as "no learning signal" would predict) -- it
+*climbs*, in GRPO G=128's case up to 76.5 (max_norm=1.0, so the raw gradient is ~76x the
+clip threshold) and keeps climbing for the rest of the run even as success_rate sits at
+flat 0.000. Mechanism: `robust_scale`'s `sigma_min=0.01` floor exists precisely because a
+degenerate group's return std is near-zero but *not exactly* zero (dense reward still
+varies slightly between rollouts that share the same binary success outcome). Dividing a
+small-but-nonzero numerator by a clipped-to-tiny denominator produces a handful of
+extreme advantage values. `clip_grad_norm_` bounds the resulting *step size* but not the
+*direction* -- after clipping, the update is still unit-norm in whatever direction those
+few outlier samples point, so the policy keeps moving, just along a direction dictated by
+noise rather than the averaged batch signal. This is a positive feedback loop: the bad
+update makes the policy worse -> more groups go degenerate next iteration -> std shrinks
+further -> grad_norm climbs further. It is why collapse is *irreversible* for every
+critic-free method tested: once `success_rate` hits 0 and stays there, it never recovers
+for the remainder of any run (GRPO G=8/64/128, SM-GRPO all show zero "bounce-backs" after
+their last nonzero-success iteration, per `resilience_analysis.py`). PPO is immune
+because its critic-relative advantage doesn't depend on in-batch outcome variance at all,
+and its grad_norm stays bounded (1-4) for the entire 60 iterations regardless of
+success_rate.
+
+**MM-GRPO (`sm_grpo_memory`, the novel cross-iteration-memory extension) is the first
+method tested that does not show this failure mode.** Same task, same G=8, same LR
+(3e-4), same scale-matching as the SM-GRPO comparison run. Results
+(`logs/month3_sm_grpo_memory.log`, full 60/60 iterations):
+- Peak success_rate 0.094 @ iteration 24 -- notably *higher* than GRPO's or SM-GRPO's
+  peak (0.056, both at iteration 0, i.e. before any gradient update -- meaning GRPO and
+  SM-GRPO's training loop never beat the BC warm-start checkpoint even once, while
+  MM-GRPO's did).
+- Last iteration with nonzero success_rate: **iteration 59 -- the last iteration of the
+  run.** It never goes permanently dead. 5 separate "bounce-backs" (nonzero success
+  immediately following a fully-degenerate iteration) vs. 0 for every pure-GRPO config
+  and 6 for SM-GRPO but only within an early window before it does permanently die at
+  iteration 40.
+- Pre-clip grad_norm stays in **0.08-0.39 for the entire run** -- never exceeds the
+  clip threshold, let alone explodes. This is *more* stable than PPO (1-4), despite
+  being critic-free.
+
+Mechanistic explanation for why: MM-GRPO's k-NN baseline (`state_matched_baselines` with
+`extra_states`/`extra_returns` from `StateReturnBuffer`) draws candidates from up to
+50k cross-iteration states, not just the 8 sibling rollouts in the current group. Two
+effects: (1) the baseline is a much better-conditioned estimate of "expected
+return-to-go from this state" -- smaller candidate pool = noisier baseline = more
+outlier-prone raw advantages, and the memory buffer directly fixes that; (2) because the
+buffer persists across iterations, it still contains states from *before* the current
+policy started struggling, so even as current-iteration rollouts degrade, the baseline
+doesn't degrade in lockstep -- there's no equivalent of "the whole group agrees, so std
+collapses to near-zero," because the comparison set was never just the current group's 8
+rollouts. This directly targets the root cause identified above, and the grad_norm data
+confirms it worked exactly as hypothesized.
+
+**Honest caveat -- this is a stability result, not yet a performance win.** MM-GRPO's
+final-5-iteration mean success_rate is 0.0098 (~1%), far below PPO's final-5 mean
+(~27%). It fixed the catastrophic-collapse failure mode but has not yet matched PPO's
+absolute performance within 60 iterations. The natural hypothesis: MM-GRPO's gradients
+are ~10x smaller in magnitude than PPO's for the whole run, so at a matched LR it is
+simply taking much smaller effective steps -- it may just be under-training, not
+under-powered. Testable and worth doing before claiming more. See "next" below.
+
+**Next experiment launched** (`scripts/run_month3_mmgrpo_exploit.sh`,
+`checkpoint_every=5`): MM-GRPO at `lr=1e-3` and `lr=3e-3` (3x and 10x the matched LR),
+120 iterations instead of 60, to test whether the gradient-stability headroom can be
+spent on faster learning without reintroducing the collapse. If either beats PPO's ~27%
+or even just keeps climbing past where GRPO/SM-GRPO always die, that is the paper's
+clearest result so far: a critic-free method that is not just "less unstable than GRPO"
+but quantitatively*and mechanistically* fixes the specific failure mode that makes
+critic-free RL unreliable for continuous robot control.
+
 ## 2026-10-27 — CORRECTION: group size delays the collapse, doesn't fix it; full ablation data
 
 The session restarted overnight (killed all 4 background jobs -- no checkpointing was
