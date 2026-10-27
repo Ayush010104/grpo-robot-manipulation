@@ -1,5 +1,62 @@
 # Progress log
 
+## 2026-10-27c — LR-exploit sweep result, and a second root-cause finding: the KL penalty was never real
+
+**LR sweep result (refutes the "just needs more time/bigger steps" hypothesis).**
+Ran MM-GRPO for 120 iterations (2x horizon) at lr=3e-4/1e-3/3e-3
+(`logs/month3_mmgrpo_exploit_lr*.log`):
+
+| lr | peak success | final-10 mean success | max grad_norm | permanently dead? |
+|---|---|---|---|---|
+| 3e-4 (matched) | 0.094 @ iter 24 | 0.0150 | 0.39 | no (alive at iter 119) |
+| 1e-3 (3x) | 0.056 @ iter 0 (never beat BC init) | 0.0012 | 5.02 | yes, from iter 118 |
+| 3e-3 (10x) | 0.056 @ iter 0 | 0.0000 | 38.28 | yes, from iter 96 |
+
+Raising LR to spend MM-GRPO's gradient-stability headroom backfires -- it reintroduces
+the exact grad_norm-climbs-then-collapse pattern from the 2026-10-27b entry, just at a
+higher LR threshold than vanilla GRPO's. The memory buffer shifts *where* the
+instability boundary is, it doesn't remove LR-sensitivity. And at the one LR that stays
+stable (3e-4), doubling the horizon doesn't help either -- success plateaus/oscillates
+around 1-2% rather than climbing. So "under-training" was the wrong diagnosis.
+
+**Second root-cause finding: the roadmap's KL safeguard was never actually implemented.**
+Checked why performance plateaus even with stable gradients by reading
+`train/kl_to_reference` from TensorBoard for the three LR-sweep runs:
+
+| lr | KL @ iter 0 | KL @ midpoint | KL @ end |
+|---|---|---|---|
+| 3e-4 | 0.10 | 8.08 | 6.14 |
+| 1e-3 | 1.11 | 39.16 | 49.22 |
+| 3e-3 | 10.06 | 92.61 | 883.22 |
+
+Even the "stable" run drifts from KL=0.1 to 6-8 away from the BC reference policy with
+nothing to stop it. `grep -n "kl" algos/*.py` shows why: `kl_to_reference` has been
+computed and written into every algo's diagnostics dict since Month 2 (it's what feeds
+the TensorBoard scalar above), but it is never once added to `loss` in any of
+grpo/rloo/tgrpo/sm_grpo/sm_grpo_memory. The roadmap (Section 9: "Keep a KL penalty or
+clipping to the reference (BC) policy to prevent collapse") describes this as a
+safeguard; it was built as a readout and never wired to actually do anything. Plausibly
+a second, independent contributor to the plateau/collapse on top of the group-std
+mechanism in 2026-10-27b: unconstrained drift away from a good initialization, even
+under otherwise-stable gradient norms.
+
+**Fix implemented** (not yet validated by results): `algos/common.py::kl_penalty_term`
+is a differentiable twin of the existing `kl_to_reference` diagnostic (which is
+`@torch.no_grad()` and therefore unusable in a loss). Wired into `grpo.py` and
+`sm_grpo_memory.py` via a new `training.kl_coef` (default `0.0`, so nothing about any
+existing result changes unless explicitly enabled). 18/18 tests still pass; smoke-tested
+with a 3-iteration run before spending real compute.
+
+**Launched** (`scripts/run_month3_kl_penalty.sh`, G=8, lr=3e-4, 120 iterations,
+`checkpoint_every=10`):
+- Vanilla GRPO at `kl_coef` = 0.01, 0.1, 1.0 -- the sharpest test available: does a real
+  KL penalty alone, with *no* memory buffer and *no* state-matching, stop the collapse
+  that has reproduced in literally every unconstrained GRPO run this project has done?
+  If yes, that would be a simpler and more fundamental fix than MM-GRPO, and arguably
+  the headline result of the whole project.
+- MM-GRPO at `kl_coef=0.1` -- does constraining drift convert its already-stable
+  gradient into sustained improvement past the ~9% peak / ~1.5% plateau above?
+
 ## 2026-10-27b — Root cause of the collapse, and the first genuinely new result: MM-GRPO doesn't die
 
 Both relaunched jobs (G=128 continuation, MM-GRPO's first real run) completed the full
