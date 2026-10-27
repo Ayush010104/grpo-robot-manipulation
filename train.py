@@ -114,6 +114,7 @@ def main(cfg: DictConfig) -> None:
                 robust_normalize=cfg.grpo.robust_normalize, sigma_min=cfg.grpo.sigma_min,
                 grad_clip=cfg.training.grad_clip,
                 match_advantage_scale=cfg.training.match_advantage_scale,
+                kl_coef=cfg.training.kl_coef,
             )
         elif cfg.algo == "rloo":
             diag = rloo.update(
@@ -145,6 +146,7 @@ def main(cfg: DictConfig) -> None:
                 sigma_min=cfg.sm_grpo_memory.sigma_min,
                 gamma=cfg.training.gamma, grad_clip=cfg.training.grad_clip,
                 match_advantage_scale=cfg.training.match_advantage_scale,
+                kl_coef=cfg.training.kl_coef,
             )
         elif cfg.algo == "ppo":
             diag = ppo.update(

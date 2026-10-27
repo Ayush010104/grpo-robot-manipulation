@@ -50,6 +50,24 @@ def kl_to_reference(policy, reference_policy, obs: torch.Tensor) -> float:
     return float(kl.mean().item())
 
 
+def kl_penalty_term(policy, reference_policy, obs: torch.Tensor) -> torch.Tensor:
+    """Differentiable twin of kl_to_reference, for actually adding to the loss.
+
+    Roadmap Section 9 calls for "a KL penalty or clipping to the reference (BC) policy
+    to prevent collapse", and every algos/*.py update() has logged kl_to_reference as a
+    diagnostic since the start of Month 2 -- but until 2026-10-27c nothing ever added it
+    to the loss, so it was pure telemetry. TensorBoard showed KL drifting from ~0.1 to
+    6-900+ over a single run even for the gradient-stable MM-GRPO method (no_grad above
+    cannot be reused here since we need gradient w.r.t. policy's parameters; reference_policy's
+    own parameters already have requires_grad_(False) set in train.py, so autograd only
+    flows back through `p`).
+    """
+    p = policy.distribution(obs)
+    q = reference_policy.distribution(obs)
+    kl = torch.distributions.kl_divergence(p, q).sum(-1)
+    return kl.mean()
+
+
 def clip_grad_and_step(policy: nn.Module, optimizer: torch.optim.Optimizer, max_norm: float = 1.0) -> float:
     grad_norm = nn.utils.clip_grad_norm_(policy.parameters(), max_norm)
     optimizer.step()

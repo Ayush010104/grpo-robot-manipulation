@@ -28,6 +28,16 @@ training:
   # head-to-head comparison between critic-free algos so a shared LR means a shared
   # effective step size. Off by default to keep existing per-algo runs reproducible.
   match_advantage_scale: false
+  # Actual KL(policy || reference) penalty added to the loss, not just logged. Added
+  # 2026-10-27c: kl_to_reference had been computed and logged by every algos/*.py since
+  # Month 2 but never once used in a loss -- the roadmap's "keep a KL penalty... to
+  # prevent collapse" safeguard was pure telemetry. TensorBoard showed KL drifting from
+  # ~0.1 to 6-900+ over a single run even for MM-GRPO, whose gradients are otherwise
+  # stable -- unconstrained policy drift away from the good BC init is a plausible
+  # second contributor to the plateau/collapse, independent of the group-std mechanism
+  # in docs/progress.md. Only grpo.py and sm_grpo_memory.py read this so far (the two
+  # methods under active comparison); 0.0 keeps every existing result reproducible.
+  kl_coef: 0.0
   eval_every: 10
   checkpoint_every: 50
   log_dir: outputs
