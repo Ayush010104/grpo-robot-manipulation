@@ -135,6 +135,7 @@ def main(cfg: DictConfig) -> None:
                 robust_normalize=cfg.sm_grpo.robust_normalize, sigma_min=cfg.sm_grpo.sigma_min,
                 gamma=cfg.training.gamma, grad_clip=cfg.training.grad_clip,
                 match_advantage_scale=cfg.training.match_advantage_scale,
+                kl_coef=cfg.training.kl_coef,
             )
         elif cfg.algo == "sm_grpo_memory":
             diag = sm_grpo_memory.update(

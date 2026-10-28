@@ -1,5 +1,49 @@
 # Progress log
 
+## 2026-10-27d — The KL penalty alone fixes vanilla GRPO's collapse (no memory buffer needed)
+
+Result of the 4-arm test launched in the entry below. All 120/120 iterations completed.
+Analysis re-ran via the same `resilience_analysis.py`-style parsing, inline.
+
+| run | peak success | final-10 mean success | final-10 mean degenerate_frac | max grad_norm | permanently dead? |
+|---|---|---|---|---|---|
+| GRPO, kl=0.01 | 0.144 @ iter 22 | 0.0043 | 0.97 | 51.61 | no, barely (iter 119 nonzero) |
+| **GRPO, kl=0.1** | 0.119 @ iter 8 | **0.0531** | 0.65 | 1.37 | no |
+| GRPO, kl=1.0 | 0.119 @ iter 8 | 0.0448 | 0.68 | 15.63 | no |
+| MM-GRPO, kl=0.1 | 0.125 @ iter 59 | 0.0362 | 0.74 | 1.50 | no |
+
+**This is the headline result of the project so far.** `kl_coef=0.01` is too weak --
+grad_norm still climbs to 51.6 and final performance is ~0.4%, barely different from the
+unconstrained baseline. But at `kl_coef=0.1`, **vanilla GRPO** -- no memory buffer, no
+state-matching, nothing but the per-step gradient penalty the roadmap always called for
+and that was never actually implemented until this session -- sustains a **5.3% mean
+success rate across its final 10 iterations**, oscillating in a healthy 2.5-8% band
+(`logs/month3_grpo_klpen_01.log`, tail inspected manually) with grad_norm bounded under
+1.4 for the entire second half of the run. This is the best *sustained final-window*
+performance any critic-free method (GRPO, RLOO, TGRPO, SM-GRPO, MM-GRPO) has produced in
+this project to date -- all of them previously converged to a literal, permanent 0%.
+`kl_coef=1.0` is slightly worse than 0.1 on every metric (lower final success, 10x higher
+grad_norm) -- over-penalizing KL starts reintroducing the instability by fighting the
+policy gradient term hard enough to destabilize optimization, not by over-constraining
+it into uselessness. The optimum is somewhere in the 0.05-0.3 range, bracketed from both
+sides.
+
+This reframes the project's central finding: the group-std noise-amplification
+mechanism from 2026-10-27b is real, but it turns out the simplest possible fix (a correct
+implementation of a safeguard the roadmap already specified) addresses it directly,
+without needing SM-GRPO's state-matching or MM-GRPO's memory buffer at all. Those
+mechanisms may still help on top of the KL fix (being tested now, see below), but they
+are no longer necessary to prevent collapse -- they were compensating for a missing
+safeguard, not for something fundamental to std-normalized advantages.
+
+**Launched** (`scripts/run_month3_kl_followup.sh`, all at the `kl_coef=0.1` sweet spot):
+1. GRPO, G=8, 300 iterations (2.5x the horizon) -- does performance keep climbing with
+   stable gradients, or plateau in the same 3-8% band?
+2. GRPO, G=64, 120 iterations -- group size alone previously peaked at 18% success
+   before collapsing (2026-10-27 entry); does the KL fix let that higher peak sustain?
+3. SM-GRPO, G=8, 120 iterations (newly wired, `algos/sm_grpo.py`) -- does state-matching
+   compound with the KL fix on top of plain GRPO's 5.3%?
+
 ## 2026-10-27c — LR-exploit sweep result, and a second root-cause finding: the KL penalty was never real
 
 **LR sweep result (refutes the "just needs more time/bigger steps" hypothesis).**

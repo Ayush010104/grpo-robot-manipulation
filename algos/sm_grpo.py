@@ -18,6 +18,7 @@ import torch
 from algos.common import (
     clip_grad_and_step,
     group_diagnostics,
+    kl_penalty_term,
     kl_to_reference,
     normalize_batch_advantages,
 )
@@ -50,6 +51,7 @@ def update(
     gamma: float = 1.0,
     grad_clip: float = 1.0,
     match_advantage_scale: bool = False,
+    kl_coef: float = 0.0,
 ) -> dict:
     embedding_fn = embedding_fn or _default_embedding
 
@@ -87,7 +89,13 @@ def update(
     advantages = torch.as_tensor(adv_np, dtype=torch.float32, device=device)
 
     log_probs = policy.log_prob(obs, actions)
-    loss = -(log_probs * advantages).mean()
+    pg_loss = -(log_probs * advantages).mean()
+    kl_term = None
+    if kl_coef > 0.0 and reference_policy is not None:
+        kl_term = kl_penalty_term(policy, reference_policy, obs)
+        loss = pg_loss + kl_coef * kl_term
+    else:
+        loss = pg_loss
     loss.backward()
     grad_norm = clip_grad_and_step(policy, optimizer, max_norm=grad_clip)
 
@@ -95,10 +103,13 @@ def update(
     diag.update(
         {
             "loss": float(loss.item()),
+            "pg_loss": float(pg_loss.item()),
             "advantage_abs_mean": float(np.abs(adv_np).mean()),
             "grad_norm": grad_norm,
         }
     )
     if reference_policy is not None:
-        diag["kl_to_reference"] = kl_to_reference(policy, reference_policy, obs)
+        diag["kl_to_reference"] = (
+            float(kl_term.item()) if kl_term is not None else kl_to_reference(policy, reference_policy, obs)
+        )
     return diag
