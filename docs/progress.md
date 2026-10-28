@@ -1,5 +1,37 @@
 # Progress log
 
+## NEXT-EXPERIMENTS QUEUE (read this first on resume)
+
+User asked (2026-10-28) to keep doing research continuously/autonomously for the day.
+This session cannot wake itself up without a new message, but the training jobs below
+run via `nohup ... & disown` and survive session restarts, so real progress accumulates
+between check-ins regardless. On resume: check `ps aux | grep train.py`, pull whatever
+finished, update this file, then launch the next item down this list that compute allows
+(don't wait for permission -- that's the standing instruction). Currently running
+(launched 2026-10-28, see 2026-10-27d entry for why): GRPO kl=0.1 G=8 x300iters
+(`logs/month3_grpo_kl01_long.log`), GRPO kl=0.1 G=64 (`logs/month3_grpo_kl01_g64.log`),
+SM-GRPO kl=0.1 G=8 (`logs/month3_sm_grpo_kl01.log`).
+
+Priority-ordered next steps once those land:
+1. **Finer kl_coef sweep around the 0.1 optimum** (0.05, 0.15, 0.2, 0.3) at G=8, 120
+   iters -- 0.01 was too weak, 1.0 was worse than 0.1 on every metric; narrow the bracket.
+2. **KL penalty + larger network (512x512) + larger G**, combining the two things that
+   independently raised peak success (group size → 18% peak before KL existed; net512
+   was used in those same runs) with the thing that now sustains it. Use
+   `checkpoints/bc_pick-place-v3_512.pt` + `policy.hidden_sizes=[512,512]`.
+3. **MM-GRPO + KL at higher kl_coef** (0.2, 0.3, 0.5) -- kl=0.1 didn't clearly beat plain
+   GRPO+KL (3.6% vs 5.3% final mean); untested whether a stronger penalty combined with
+   the memory buffer's already-tiny gradients does better.
+4. **Adaptive/decaying kl_coef** (PPO-style: high early to stay near the good BC init,
+   anneal down later to allow more exploration) -- not yet implemented in any algo.
+5. **Rigorous head-to-head**: once the best critic-free config is settled, run it back
+   to back with PPO on identical iteration/env-step budgets (not just eyeballing final-10
+   means from different runs) and put a clean comparison plot in analysis/ as the
+   project's main result figure.
+6. Still open from earlier sessions, lower priority: read arXiv:2507.19555 in full
+   (docs/novelty_check.md), LIBERO integration (never started).
+
+
 ## 2026-10-27d — The KL penalty alone fixes vanilla GRPO's collapse (no memory buffer needed)
 
 Result of the 4-arm test launched in the entry below. All 120/120 iterations completed.
