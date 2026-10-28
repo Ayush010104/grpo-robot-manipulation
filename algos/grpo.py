@@ -16,6 +16,7 @@ from algos.common import (
 )
 from algos.rollout_buffer import RolloutGroup
 from advantages.group_baselines import (
+    group_mean_centered_advantages,
     is_degenerate_group_by_success,
     robust_trajectory_advantages,
     trajectory_advantages,
@@ -33,6 +34,12 @@ def update(
     grad_clip: float = 1.0,
     match_advantage_scale: bool = False,
     kl_coef: float = 0.0,
+    # "group_std" (default) = current GRPO, divide by (robust-scaled) group std.
+    # "mean_only" = REINFORCE++-style: no per-group division at all, rely solely on
+    # match_advantage_scale's single global batch normalization. Added 2026-10-28 for
+    # the collapse-fixes comparison (docs/novelty_check.md); see
+    # advantages/group_baselines.py::group_mean_centered_advantages.
+    normalize_mode: str = "group_std",
 ) -> dict:
     per_traj_adv = []
     degenerate_mask = []
@@ -40,7 +47,9 @@ def update(
         returns = group.returns
         successes = np.array([t.succeeded for t in group.trajectories])
         degenerate_mask.append(is_degenerate_group_by_success(successes))
-        if robust_normalize:
+        if normalize_mode == "mean_only":
+            adv = group_mean_centered_advantages(returns)
+        elif robust_normalize:
             adv = robust_trajectory_advantages(returns, sigma_min=sigma_min)
         else:
             adv = trajectory_advantages(returns)

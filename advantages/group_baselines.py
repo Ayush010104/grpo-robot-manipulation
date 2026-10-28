@@ -26,6 +26,23 @@ def trajectory_advantages(returns: np.ndarray, eps: float = 1e-8) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# "No group-std division" (REINFORCE++-style global normalization), added 2026-10-28
+# for the collapse-fixes comparison in docs/novelty_check.md: the literature (phantom-
+# advantages / "Why GRPO Needs Normalization", see novelty_check.md) argues the
+# *division by a near-zero group std* is the destabilizing ingredient, not degenerate
+# groups per se, and that REINFORCE++ sidesteps it by normalizing only once, globally,
+# across the whole batch (algos/common.py::normalize_batch_advantages) rather than
+# per-group. This is the raw, group-mean-centered (but NOT group-scaled) advantage that
+# a caller should combine with training.match_advantage_scale=true as the one and only
+# normalization -- used alone (match_advantage_scale=false) its scale is uncontrolled
+# and comparisons across algorithms/iterations are meaningless.
+# ---------------------------------------------------------------------------
+def group_mean_centered_advantages(returns: np.ndarray) -> np.ndarray:
+    """A_i = R_i - mean(R). No group-level division by std/robust_scale at all."""
+    return returns - returns.mean()
+
+
+# ---------------------------------------------------------------------------
 # Idea B: robust advantage normalisation.
 # ---------------------------------------------------------------------------
 def robust_scale(returns: np.ndarray, sigma_min: float = 1e-2, method: str = "clip") -> float:

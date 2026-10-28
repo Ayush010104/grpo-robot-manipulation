@@ -115,6 +115,7 @@ def main(cfg: DictConfig) -> None:
                 grad_clip=cfg.training.grad_clip,
                 match_advantage_scale=cfg.training.match_advantage_scale,
                 kl_coef=cfg.training.kl_coef,
+                normalize_mode=cfg.grpo.normalize_mode,
             )
         elif cfg.algo == "rloo":
             diag = rloo.update(

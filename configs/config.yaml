@@ -61,6 +61,7 @@ reference_policy:
 grpo:
   robust_normalize: false  # Idea B toggle
   sigma_min: 0.01
+  normalize_mode: group_std  # "group_std" | "mean_only" (REINFORCE++-style global norm)
 
 rloo: {}
 
