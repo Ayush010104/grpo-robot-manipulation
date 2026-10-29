@@ -1,5 +1,53 @@
 # Progress log
 
+## 2026-10-29 — Found the real bottleneck: demo QUANTITY, not quality. 0% -> 56% BC from one change.
+
+User pushed back on the ~5-10% success numbers and asked for 70%. Before tuning GRPO
+further, checked whether the ceiling was actually GRPO's fault: deterministic eval
+(eval.py, 50 held-out episodes, not the noisy stochastic training-time success_rate)
+showed the BC warm-start itself -- the thing *every* algorithm in this project fine-tunes
+from -- only reaches **10% success**, and GRPO+KL=0.1 after 220 iterations of stable,
+non-collapsing training hadn't beaten that (6% deterministic eval despite higher mean
+return). The roadmap's own Month-1 target for BC was "30 to 60% partial success"
+(bc_train.py docstring); 10% is well below even the low end.
+
+Ran a controlled ablation (`scripts/run_bc_bottleneck_ablation.sh`) isolating demo
+quantity vs. demo noise as the cause:
+
+| variant | episodes | noise_std | expert collection success | BC deterministic eval (n=50) |
+|---|---|---|---|---|
+| ep20_noise03 (≈ original setup) | 20 | 0.3 | 17/20 | **0.00%** |
+| ep150_noise03 | 150 | 0.3 | 143/150 | **56.00%** |
+| ep20_noise01 | 20 | 0.1 | 19/20 | **2.00%** |
+| ep150_noise01 | 150 | 0.1 | 150/150 | **56.00%** |
+
+**Demo quantity is almost the entire story.** Both 150-episode variants land at the same
+56% regardless of noise level (0.3 vs 0.1); both 20-episode variants stay near 0%
+regardless of noise level. `scripts/collect_bc_data.py`'s default of 20 episodes was
+simply never enough data for a 256x256-hidden MLP to generalize across this task's state
+distribution -- no amount of denoising the demos fixes that, and no amount of GRPO/KL
+tuning on top of a 10%-success reference was ever going to close an 8-20x gap that lives
+one layer down, in the imitation data.
+
+**Also finished, same session**: the GRPO fixes-comparison from 2026-10-28 (all 5 arms
+complete). Confirms the KL penalty is the necessary ingredient, not the normalization
+scheme -- `robust_normalize` alone and `normalize_mode=mean_only` alone both still
+collapse permanently (dead by iteration 12 and 16 respectively, same failure pattern as
+plain unconstrained GRPO), while every arm that includes `kl_coef=0.1` survives
+regardless of which normalization scheme it's paired with (final-10 mean success
+4.6-6.4% across robust_normalize+KL, mean_only+KL, and KL alone -- no combination
+meaningfully beats plain KL alone). The 300-iteration KL-only extension's final-10 mean
+(6.4%) is only marginally better than the 120-iteration version's (5.3%) -- confirms the
+earlier finding that it plateaus in a noisy band rather than continuing to climb, which
+now makes sense: it was plateauing relative to a 10%-success reference it was anchored
+to, not because training itself stalled.
+
+**Launched** (`scripts/run_month3_better_bc_warmstart.sh`): GRPO+KL=0.1 and PPO, both
+re-run from the new 56%-success `checkpoints/bc_ablation/ep150_noise03.pt` instead of the
+old 10%-success checkpoint -- the single highest-leverage change identified so far. If
+this closes a meaningful fraction of the gap toward 70%, it confirms the bottleneck was
+never the RL algorithm.
+
 ## NEXT-EXPERIMENTS QUEUE (read this first on resume)
 
 User asked (2026-10-28) to keep doing research continuously/autonomously for the day.
