@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Finding and Fixing GRPO's Collapse in Robot Manipulation</title>
+<meta name="description" content="Diagnosing why critic-free GRPO collapses when fine-tuning a robot manipulation policy, fixing it with a correctly-wired KL penalty, and hitting 70% success with no critic.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650;12..96,750&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#EDF0F3; --surface:#FFFFFF; --ink:#121925; --ink-2:#3B4555; --muted:#667183; --rule:#D5DBE3;
+  --accent:#3438C9; --accent-soft:#E3E4FA; --accent-ink:#FFFFFF;
+  --power:#9A5B00; --power-soft:#F8EBD3;
+  --ok:#1D7A55; --ok-soft:#DDF1E7;
+  --bad:#B23A3A; --bad-soft:#FAE3E1;
+  --canvas-bg:#F7F9FB; --canvas-grid:#E2E7ED;
+  --eval:#1D7A9C; --eval-soft:#DFF0F6;
+  --display:"Bricolage Grotesque","Avenir Next","Segoe UI",system-ui,sans-serif;
+  --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#0C1017; --surface:#141A24; --ink:#E7EBF1; --ink-2:#BCC4D0; --muted:#8C96A6; --rule:#263041;
+    --accent:#9A9DFF; --accent-soft:#23264A; --accent-ink:#121925;
+    --power:#F0B865; --power-soft:#352812;
+    --ok:#6FD3A6; --ok-soft:#13302A; --bad:#E8847A; --bad-soft:#3A1E1C;
+    --canvas-bg:#10151E; --canvas-grid:#1C2432;
+    --eval:#6FC7E6; --eval-soft:#122A33;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#0C1017; --surface:#141A24; --ink:#E7EBF1; --ink-2:#BCC4D0; --muted:#8C96A6; --rule:#263041;
+  --accent:#9A9DFF; --accent-soft:#23264A; --accent-ink:#121925;
+  --power:#F0B865; --power-soft:#352812;
+  --ok:#6FD3A6; --ok-soft:#13302A; --bad:#E8847A; --bad-soft:#3A1E1C;
+  --canvas-bg:#10151E; --canvas-grid:#1C2432;
+  --eval:#6FC7E6; --eval-soft:#122A33;
+}
+*{box-sizing:border-box}
+body{background:var(--ground); color:var(--ink); font-family:var(--serif); font-size:17px; line-height:1.6; margin:0; padding-inline:20px; -webkit-font-smoothing:antialiased}
+.wrap{max-width:860px; margin-inline:auto}
+a{color:var(--accent)}
+h1,h2,h3{font-family:var(--display); letter-spacing:-.02em; text-wrap:balance; margin:0}
+.mono{font-family:var(--mono)}
+.eyebrow{font-family:var(--mono); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
+.mark{font-family:var(--display); font-weight:750; font-size:15px; padding-block:18px}
+.mark span{color:var(--accent)}
+.hero{padding-block:28px 56px; border-bottom:1px solid var(--rule)}
+.hero h1{font-weight:750; font-size:clamp(30px,4.8vw,48px); line-height:1.06; margin-bottom:20px}
+.hero-grid{display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); gap:32px; align-items:start}
+@media (max-width:620px){
+  .hero-grid{grid-template-columns:minmax(0,1fr)}
+  .sec-h{font-size:22px}
+}
+.hero p{font-size:18px; line-height:1.6; color:var(--ink-2); margin:0}
+.hero .byline{font-family:var(--mono); font-size:12.5px; color:var(--muted); margin-top:14px; line-height:1.6}
+.stat-card{background:var(--surface); border:1px solid var(--rule); border-radius:14px; padding:22px; text-align:center}
+.authors{display:flex; flex-wrap:wrap; align-items:center; gap:12px 18px; margin-top:18px}
+.paper-link{display:inline-flex; align-items:center; gap:5px; font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--accent); background:var(--accent-soft); padding:6px 12px; border-radius:999px; text-decoration:none; white-space:nowrap}
+.paper-link:hover{opacity:.82}
+.authors-card{display:flex; flex-direction:column; align-items:center; gap:3px}
+.authors-card-name{font-family:var(--mono); font-size:14px; color:var(--ink); font-weight:650}
+.authors-card-co{font-family:var(--mono); font-size:12.5px; color:var(--ink-2)}
+.authors-card-aff{font-family:var(--mono); font-size:11px; color:var(--muted); margin-bottom:12px}
+section.proj{padding-block:52px; border-bottom:1px solid var(--rule)}
+section.proj:last-of-type{border-bottom:none}
+.sec-num{font-family:var(--mono); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:10px}
+.sec-h{font-weight:700; font-size:clamp(23px,3vw,30px); line-height:1.15; margin-bottom:16px}
+.sec-body{max-width:66ch; color:var(--ink-2); font-size:16px; line-height:1.65; margin-bottom:28px}
+.sec-body strong{color:var(--ink); font-weight:600}
+.figure-box{background:var(--surface); border:1px solid var(--rule); border-radius:14px; padding:22px}
+.cap{font-family:var(--mono); font-size:12px; color:var(--muted); line-height:1.6; margin-top:14px}
+.arch-img-card{background:#fff; padding:16px; display:flex; justify-content:center}
+.arch-img{width:100%; height:auto; max-width:900px; display:block; border-radius:6px}
+.subsec-h{font-family:var(--display); font-weight:700; font-size:17px; margin:30px 0 12px}
+.res-table{width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px; background:var(--surface)}
+.res-table th,.res-table td{padding:10px 10px; border-bottom:1px solid var(--rule); text-align:right; vertical-align:top}
+.res-table th:first-child,.res-table td:first-child{text-align:left}
+.res-table th{color:var(--muted); font-weight:600; font-size:11px; letter-spacing:.04em; text-transform:uppercase}
+.res-table td.win{color:var(--ok); font-weight:650}
+.res-table td.lose{color:var(--bad); font-weight:650}
+.res-table tr:last-child td{border-bottom:none}
+.table-scroll{overflow-x:auto}
+.res-table{min-width:560px}
+.res-table td:first-child{min-width:180px}
+.stat-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-top:20px}
+.stat-chip{border:1px solid var(--rule); border-radius:10px; padding:14px 16px; background:var(--canvas-bg)}
+.stat-chip .num{font-family:var(--display); font-weight:750; font-size:22px; color:var(--ok)}
+.stat-chip .num.bad{color:var(--bad)}
+.stat-chip .lbl{font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-top:4px; line-height:1.4}
+.lesson-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px}
+.lesson{border:1px solid var(--rule); border-radius:12px; padding:14px 16px; background:var(--canvas-bg)}
+.lesson .tag{font-family:var(--mono); font-size:10.5px; font-weight:650; letter-spacing:.06em; text-transform:uppercase}
+.lesson.yes .tag{color:var(--ok)} .lesson.no .tag{color:var(--bad)} .lesson.main .tag{color:var(--accent)}
+.lesson.main{border-color:var(--accent)}
+.lesson h4{font-family:var(--display); font-weight:700; font-size:15px; margin:6px 0 6px}
+.lesson p{font-size:13.5px; color:var(--ink-2); margin:0; line-height:1.5}
+.mdp-badge{display:flex; align-items:center; font-family:var(--mono); font-size:11.5px; font-weight:600; letter-spacing:.03em; color:var(--ink-2); background:var(--canvas-bg); border:1px solid var(--rule); border-radius:8px; padding:9px 13px; margin-bottom:16px; line-height:1.5}
+.mdp-dot{display:inline-block; width:7px; height:7px; min-width:7px; border-radius:50%; background:var(--accent); margin-right:9px; box-shadow:0 0 0 3px var(--accent-soft)}
+.closing{padding-block:52px; text-align:left}
+.closing p{max-width:68ch; font-size:17px; color:var(--ink-2); line-height:1.65}
+.closing .pill{display:inline-block; font-family:var(--mono); font-size:12px; color:var(--power); background:var(--power-soft); padding:5px 11px; border-radius:999px; margin-bottom:16px}
+footer{padding-block:28px 40px; font-family:var(--mono); font-size:11.5px; color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mark">Ayush B. Patel<span>.</span></div>
+
+  <header class="hero">
+    <h1>Finding and Fixing GRPO's Collapse in Robot Manipulation</h1>
+    <div class="hero-grid">
+      <div>
+        <p>Critic-free RL methods like GRPO promise a cheaper way to fine-tune robot policies &mdash; no value network to train or store. In practice, every critic-free method I tested <strong>collapsed to permanent 0% success</strong> within a few dozen iterations. I traced the collapse to a specific mechanism &mdash; a gradient-norm blowup under group-std normalization &mdash; fixed it by correctly wiring a KL-to-reference penalty that the standard GRPO recipe specifies but is usually never actually implemented, and, after finding the real bottleneck was somewhere else entirely, reached <strong>70% deterministic success with no critic at all</strong>.</p>
+      </div>
+      <div class="stat-card authors-card">
+        <div class="authors-card-name"><b>Ayush B. Patel</b></div>
+        <div class="authors-card-co">Independent research</div>
+        <div class="authors-card-aff">Meta-World &middot; Sawyer pick-and-place</div>
+        <span class="paper-link" style="cursor:default">Research in progress</span>
+      </div>
+    </div>
+    <div class="byline">Group-Relative Policy Optimization &middot; Critic-Free RL &middot; Robot Manipulation &middot; Behavior Cloning</div>
+  </header>
+
+  <!-- ===== 01 PROBLEM ===== -->
+  <section class="proj" id="problem">
+    <div class="eyebrow sec-num">01 &mdash; The problem</div>
+    <h2 class="sec-h">A memory-cheap RL method that cannot stay alive</h2>
+    <p class="sec-body">GRPO (Group Relative Policy Optimization) replaces a learned value function with a simple trick: roll out several trajectories from the <em>same</em> starting state, and use each one's return relative to its group's mean and std as the advantage. No critic network, no bootstrapped value estimate &mdash; exactly the memory saving that matters when you'd otherwise double the parameter count with a critic the same size as the policy.</p>
+    <p class="sec-body">I fine-tuned a behavior-cloning-warm-started policy on <strong>Meta-World's pick-place-v3</strong> task (a Sawyer arm picking up a puck and placing it at a target) with GRPO, RLOO, TGRPO, and a state-matched variant I designed. Every one of them <strong>collapsed to a permanent 0% success rate</strong> within 10&ndash;40 iterations and never recovered, while a PPO baseline with a real critic climbed steadily. The question became: is this failure fundamental to critic-free RL, or fixable?</p>
+  </section>
+
+  <!-- ===== 02 ROOT CAUSE ===== -->
+  <section class="proj" id="rootcause">
+    <div class="eyebrow sec-num">02 &mdash; Root cause</div>
+    <h2 class="sec-h">Degenerate groups don't starve the gradient &mdash; they poison its direction</h2>
+    <p class="sec-body">The obvious hypothesis is that once a group of rollouts all succeed or all fail (a "degenerate group"), the std-normalized advantage goes to zero and training just stalls. The actual mechanism is worse. A degenerate group's return std is <em>near</em> zero but not exactly zero &mdash; dense reward still varies slightly between rollouts that share the same outcome. Dividing by that near-zero denominator (even through a floor meant to prevent exactly this) produces a handful of extreme advantage outliers.</p>
+    <p class="sec-body">Gradient clipping bounds the resulting update's <strong>size</strong>, but not its <strong>direction</strong> &mdash; so the policy keeps moving along whatever direction those few outlier samples point, gets worse, produces more degenerate groups next iteration, and the cycle never reverses. I confirmed this by tracking the <em>pre-clip</em> gradient norm directly: it doesn't shrink toward zero as training fails, it climbs &mdash; up to 76&times; the clip threshold &mdash; exactly when success flatlines, and keeps climbing for the rest of the run even with success stuck at 0%.</p>
+    <div class="figure-box arch-img-card">
+      <img class="arch-img" src="assets/Fig1_gradnorm_mechanism.png" alt="Left panel: success rate collapsing to zero and staying there for every group-std-normalized method tested. Right panel: pre-clip gradient norm on a log scale, climbing into the tens for every method except the one using a cross-iteration memory buffer, which stays flat near 0.1-0.4.">
+    </div>
+    <p class="cap">Once collapsed, every critic-free method tested never recovers: zero instances of nonzero success appearing after a run goes fully degenerate. PPO's critic-relative advantage never depends on in-batch outcome variance, so it's immune to this mechanism entirely.</p>
+  </section>
+
+  <!-- ===== 03 THE FIX ===== -->
+  <section class="proj" id="fix">
+    <div class="eyebrow sec-num">03 &mdash; The fix</div>
+    <h2 class="sec-h">A KL penalty to the reference policy &mdash; specified, but never actually wired in</h2>
+    <p class="sec-body">The standard GRPO recipe calls for a KL-divergence penalty against a frozen reference policy to prevent exactly this kind of unconstrained drift. Checking the implementation, the KL divergence was being <strong>computed and logged the entire time</strong> &mdash; it just was never added to the loss. Pure telemetry, not a safeguard.</p>
+    <p class="sec-body">Wiring in a real, differentiable KL penalty term and sweeping its coefficient on vanilla GRPO &mdash; no architectural changes, no memory buffer, nothing but the fix itself &mdash; was the single highest-leverage change in the whole project:</p>
+    <div class="figure-box arch-img-card">
+      <img class="arch-img" src="assets/Fig2_kl_penalty_fix.png" alt="Left: success rate over 120 iterations for GRPO with no KL penalty (collapses and stays dead), kl_coef=0.01 (too weak, eventually collapses too), kl_coef=0.1 (sustains a healthy 2.5-8% band), and kl_coef=1.0 (over-penalized). Right: the same four runs' gradient norm, with kl_coef=0.1 staying bounded under 1.4 for the whole run.">
+    </div>
+    <div class="stat-row">
+      <div class="stat-chip"><div class="num bad">0%</div><div class="lbl">final success, no KL penalty &mdash; permanent collapse, every run</div></div>
+      <div class="stat-chip"><div class="num">5.3%</div><div class="lbl">sustained final success at kl_coef=0.1 &mdash; never collapses again</div></div>
+      <div class="stat-chip"><div class="num">&lt;1.4</div><div class="lbl">gradient norm stays bounded the entire run (vs. 50&ndash;76 unconstrained)</div></div>
+    </div>
+    <p class="sec-body" style="margin-top:20px">I also ran this fix head-to-head against the alternative remedies proposed elsewhere in the literature &mdash; dropping group-std normalization for a global batch normalization, and a robust std-floor on the group denominator &mdash; tested alone and combined with the KL penalty. <strong>Neither normalization scheme survives on its own</strong> (both collapse by iteration 12&ndash;16, same as unconstrained GRPO); every combination that includes the KL penalty survives. The KL penalty is the necessary ingredient, not the normalization scheme.</p>
+  </section>
+
+  <!-- ===== 04 REALITY CHECK ===== -->
+  <section class="proj" id="bottleneck">
+    <div class="eyebrow sec-num">04 &mdash; Reality check</div>
+    <h2 class="sec-h">A stable algorithm fine-tuning a bad reference is still bad</h2>
+    <p class="sec-body">With the collapse fixed, success still plateaued around 5&ndash;6% &mdash; far short of a usable policy. Before tuning the RL algorithm further, I checked the thing every algorithm in this project was fine-tuning <em>from</em>: the behavior-cloning warm-start itself, evaluated deterministically rather than through the noisy training-time success rate. It reached only <strong>10% success</strong>. No RL algorithm was ever going to climb far above a reference that bad.</p>
+    <p class="sec-body">A controlled ablation isolating demo <em>quantity</em> from demo <em>noise</em> found the entire story was quantity: the default 20 demonstration episodes were simply never enough data for the policy network to generalize. Going to 150 episodes &mdash; with the noise level unchanged &mdash; took BC success from <strong>0% to 56%</strong>, regardless of how clean or noisy the demonstrations were.</p>
+    <div class="figure-box arch-img-card">
+      <img class="arch-img" src="assets/Fig3_bc_bottleneck.png" alt="Bar chart: 20 episodes gives 0-2% BC success regardless of noise level; 150 episodes gives 56% BC success regardless of noise level.">
+    </div>
+    <p class="cap">No amount of RL-side tuning &mdash; collapse-fix or otherwise &mdash; was ever going to close a gap that lived one layer down, in the imitation data the whole pipeline was built on.</p>
+  </section>
+
+  <!-- ===== 05 RESULT ===== -->
+  <section class="proj" id="result">
+    <div class="eyebrow sec-num">05 &mdash; Result</div>
+    <h2 class="sec-h">70% success, no critic, from the same fix</h2>
+    <p class="sec-body">Re-running GRPO with the KL-penalty fix from the corrected, 56%-success behavior-cloning checkpoint, evaluated deterministically at its best checkpoint along training:</p>
+    <div class="figure-box arch-img-card">
+      <img class="arch-img" src="assets/Fig4_70pct_milestone.png" alt="Bar chart progression: old BC warm-start 10%, GRPO+KL from old BC 6%, new BC warm-start 56%, GRPO+KL from new BC at its peak checkpoint 70%, same run at its final checkpoint 0%, PPO at its final checkpoint 100%.">
+    </div>
+    <div class="figure-box table-scroll">
+      <table class="res-table">
+        <thead><tr><th>Checkpoint</th><th>Deterministic success</th></tr></thead>
+        <tbody>
+          <tr><td>BC warm-start (original, 20 demos)</td><td>10%</td></tr>
+          <tr><td>BC warm-start (fixed, 150 demos)</td><td>56%</td></tr>
+          <tr><td>GRPO + KL=0.1, near training-time peak (iteration 40)</td><td class="win">70%</td></tr>
+          <tr><td>GRPO + KL=0.1, final checkpoint (iteration 150)</td><td class="lose">0%</td></tr>
+          <tr><td>PPO, final checkpoint (iteration 150)</td><td class="win">100%</td></tr>
+        </tbody>
+      </table>
+      <p class="cap">50 held-out evaluation episodes per checkpoint, deterministic policy (no sampling noise).</p>
+    </div>
+    <div class="stat-row">
+      <div class="stat-chip"><div class="num">70%</div><div class="lbl">critic-free GRPO, best checkpoint &mdash; the explicit target this phase was chasing</div></div>
+      <div class="stat-chip"><div class="num">7&times;</div><div class="lbl">over the original BC+GRPO baseline this project started from (10% &rarr; 70%)</div></div>
+      <div class="stat-chip"><div class="num bad">100%</div><div class="lbl">PPO fully solves the task from the identical starting point</div></div>
+    </div>
+  </section>
+
+  <!-- ===== 06 OPEN QUESTION ===== -->
+  <section class="proj" id="open">
+    <div class="eyebrow sec-num">06 &mdash; Open question</div>
+    <h2 class="sec-h">Fixed the collapse mechanism &mdash; not collapse itself</h2>
+    <p class="sec-body">The same run that produced the 70% checkpoint at iteration 40 fully re-collapsed to 0% by iteration 150, with the identical gradient-norm-climbing signature as the original, unconstrained failure. The KL penalty raises the ceiling substantially and removes the irreversible noise-amplification mechanism I diagnosed in section 02 &mdash; it does not make the method converge the way PPO's critic-relative advantage does.</p>
+    <div class="lesson-grid">
+      <div class="lesson yes"><div class="tag">confirmed</div><h4>The KL fix is necessary and sufficient to prevent the specific collapse mechanism</h4><p>Head-to-head against two alternative normalization fixes from the literature; only KL-penalized runs survive.</p></div>
+      <div class="lesson no"><div class="tag">not yet solved</div><h4>Checkpoint selection still matters enormously for GRPO</h4><p>train.py has no automatic best-checkpoint tracking against a held-out deterministic eval &mdash; a real engineering gap if GRPO is to be deployed without PPO's inherent stability.</p></div>
+      <div class="lesson main"><div class="tag">in progress</div><h4>Does a KL coefficient tuned to a good reference, not a weak one, hold the peak instead of drifting past it?</h4><p>kl_coef=0.1 was implicitly calibrated against a nearly-useless 10%-success reference. Testing 0.2&ndash;0.5 against the real 56%-success reference now.</p></div>
+    </div>
+  </section>
+
+  <section class="closing">
+    <span class="pill">Research in progress</span>
+    <p>Group-relative, critic-free RL fails on continuous robot control through a specific, traceable mechanism: a near-zero group-std denominator inflates noise into gradient-dominating outliers, and the resulting drift compounds every iteration it goes unchecked. A correctly-implemented KL-to-reference penalty &mdash; specified by the standard recipe, but rarely actually wired into the loss &mdash; stops that mechanism outright, and once it stops being the limiting factor, the behavior-cloning data quality becomes the real bottleneck. Fixing both took this pipeline from a 10% starting point to 70% with no critic at all. Closing the remaining gap to PPO's 100% &mdash; without PPO's critic &mdash; is the open question this project is chasing next.</p>
+  </section>
+
+  <footer>&copy; 2026 Ayush Brijesh Patel &middot; Finding and Fixing GRPO's Collapse in Robot Manipulation</footer>
+</div>
+</body>
+</html>
