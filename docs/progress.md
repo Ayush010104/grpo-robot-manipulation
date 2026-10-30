@@ -1,5 +1,49 @@
 # Progress log
 
+## 2026-10-30 — 70% hit. GRPO+KL from the fixed BC checkpoint, deterministic eval.
+
+Direct continuation of the bottleneck fix below. Both runs launched from
+`checkpoints/bc_ablation/ep150_noise03.pt` (56%-success BC, vs. the old 10%-success
+checkpoint every prior experiment used) finished 150/150 iterations.
+
+**Training-time (stochastic) numbers**: GRPO+KL=0.1 climbed to a peak of 31.2% success
+at iteration 36 (`degenerate_frac=0.00`), then drifted and fully re-collapsed by
+iteration 150 (0% success, `degenerate_frac=1.00`, grad_norm climbing the whole way down
+-- the same signature as every other collapse in this project). PPO climbed steadily to
+85-95% in its final iterations, no instability at any point.
+
+**Deterministic eval (eval.py, 50 held-out episodes) is where this gets decisive**:
+
+| checkpoint | deterministic success |
+|---|---|
+| GRPO+KL=0.1, iteration 40 (near its training-time peak) | **70.00%** |
+| GRPO+KL=0.1, iteration 150 (final, post-collapse) | 0.00% |
+| PPO, iteration 150 (final) | **100.00%** |
+
+**GRPO+KL=0.1 hits the user's explicit 70% target, with critic-free RL, at its peak
+checkpoint.** This directly confirms the bottleneck diagnosis from the entry below: it
+was never the RL algorithm or the collapse mechanism research -- it was the BC
+warm-start's data quantity, the whole time. PPO reaches a full 100% solve from the same
+fixed starting point.
+
+**New lesson, orthogonal to everything above**: checkpoint selection matters enormously
+for GRPO-family methods specifically, because they still eventually collapse even from
+a good start -- the SAME run produced both the 70% result and a totally dead 0% final
+checkpoint 110 iterations later. `train.py` has no automatic best-checkpoint tracking or
+periodic deterministic eval; it just saves on a fixed schedule and the script ends.
+That's a real gap worth fixing (see queue below) if GRPO is to be used at all without
+PPO's inherent stability -- right now a GRPO deployment story requires either early
+stopping against a held-out eval, or (more promising) finding a `kl_coef` strong enough
+relative to a *good* reference to hold the peak instead of drifting past it.
+
+**Launched** (`scripts/run_month3_newbc_kl_retune.sh`): kl_coef=0.2/0.3/0.5, same new BC
+checkpoint, 150 iterations, `checkpoint_every=5` for finer-grained checkpoint selection
+later. Hypothesis: kl_coef=0.1 was implicitly calibrated against the old, nearly-useless
+10%-success reference, where staying close to the reference was nearly synonymous with
+staying stable; against a genuinely good 56%-success reference, the same absolute
+coefficient is a weaker *relative* constraint, since there's now somewhere meaningfully
+better AND somewhere worse to drift toward.
+
 ## 2026-10-29 — Found the real bottleneck: demo QUANTITY, not quality. 0% -> 56% BC from one change.
 
 User pushed back on the ~5-10% success numbers and asked for 70%. Before tuning GRPO
