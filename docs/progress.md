@@ -1,5 +1,39 @@
 # Progress log
 
+## 2026-10-31 — kl_coef retune confirms the hypothesis: 0.1 was calibrated for the old, weak reference
+
+The three `kl_coef` arms launched in the entry below (2026-10-30) all finished 150/150
+iterations. Plot: `analysis/algo_trajectories.png` (full comparison, training-time
+stochastic success_rate + pre-clip grad_norm, all from the new 56%-success BC checkpoint
+except the gray "old BC" line kept for contrast).
+
+| kl_coef | peak success | final-10 mean success | permanently dead? |
+|---|---|---|---|
+| 0.1 (2026-10-30 baseline) | 0.312 @ iter 36 | 0.0000 | **yes**, from iter 146 |
+| 0.2 | **0.344 @ iter 144** (still climbing at run end) | **0.2643** | no |
+| 0.3 | 0.287 @ iter 148 | 0.2362 | no |
+| 0.5 | 0.263 @ iter 133 | 0.1970 | no |
+
+**Confirmed**: `kl_coef=0.1` was implicitly calibrated against the old, 10%-success
+reference and is simply too weak once the reference is genuinely good (56%) -- the
+policy has somewhere meaningfully better *and* somewhere worse to drift to now, and 0.1
+isn't enough to hold it near the good region. Every `kl_coef >= 0.2` tested survives the
+full run without collapsing. `kl_coef=0.2` is the best of the three: highest peak, highest
+sustained final-window mean, and still trending upward when the run ended at iteration
+150 -- worth extending further, since it hasn't visibly plateaued yet. Diminishing /
+reversing returns above that: 0.3 and 0.5 are both lower on every metric than 0.2,
+consistent with the earlier 2026-10-27d finding that over-penalizing starts fighting the
+policy-gradient term rather than just constraining it.
+
+**Where things stand overall** (see `analysis/algo_trajectories.png`): PPO, from the
+fixed BC checkpoint, climbs cleanly past the 70% line with no instability at any point
+(100% deterministic eval, 2026-10-30 entry). GRPO+KL=0.2 is the best non-collapsing
+critic-free configuration found so far, sustaining a ~26-34% training-time success band
+without ever dying -- a real, usable result, though still well below PPO's ceiling and
+below the 70% GRPO briefly touched at kl=0.1's peak before collapsing. The practical
+takeaway: kl_coef needs to scale with how good the reference policy is, not be fixed
+project-wide -- worth testing an adaptive/annealed version next (already on the queue).
+
 ## 2026-10-30 — 70% hit. GRPO+KL from the fixed BC checkpoint, deterministic eval.
 
 Direct continuation of the bottleneck fix below. Both runs launched from
